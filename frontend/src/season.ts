@@ -2,6 +2,7 @@
 // like, and the running scoreboard. Everything comes from the API response.
 
 import type { Conditions, MonthState, Strategy } from "./types";
+import { num, t } from "./i18n";
 
 export const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -149,7 +150,7 @@ const isExposed = (frame: PlotFrame) => frame.state === "bare" || frame.state ==
 export function keyMoments(strategies: Strategy[], conditions: Conditions, steps: number): KeyMoment[] {
   const [current, ...options] = strategies;
   if (!current || options.length === 0) return [];
-  const optionName = (i: number) => (options.length > 1 ? `Option ${i + 1}` : "Option");
+  const optionName = (i: number) => (options.length > 1 ? t("Option {n}", { n: i + 1 }) : t("Option"));
 
   let exposed: KeyMoment | null = null;
   const widest: { water?: { gap: number; moment: KeyMoment }; roots?: { gap: number; moment: KeyMoment } } = {};
@@ -164,8 +165,11 @@ export function keyMoments(strategies: Strategy[], conditions: Conditions, steps
         exposed = {
           kind: "exposed",
           step,
-          label: "Heavy rain on bare soil",
-          detail: `${covered} of ${options.length} options ${covered === 1 ? "keeps" : "keep"} the soil covered`,
+          label: t("Heavy rain on bare soil"),
+          detail:
+            covered === 1
+              ? t("{n} of {total} options keeps the soil covered", { n: covered, total: options.length })
+              : t("{n} of {total} options keep the soil covered", { n: covered, total: options.length }),
         };
       }
     }
@@ -178,8 +182,11 @@ export function keyMoments(strategies: Strategy[], conditions: Conditions, steps
           moment: {
             kind: "water",
             step,
-            label: "Largest water-use gap",
-            detail: `${optionName(i)} uses ${Math.abs(diff)} mm ${diff > 0 ? "more" : "less"} than your rotation`,
+            label: t("Largest water-use gap"),
+            detail:
+              diff > 0
+                ? t("{option} uses {mm} mm more than your rotation", { option: optionName(i), mm: Math.abs(diff) })
+                : t("{option} uses {mm} mm less than your rotation", { option: optionName(i), mm: Math.abs(diff) }),
           },
         };
       }
@@ -190,8 +197,8 @@ export function keyMoments(strategies: Strategy[], conditions: Conditions, steps
           moment: {
             kind: "roots",
             step,
-            label: "Living roots where yours has none",
-            detail: `${optionName(i)} roots reach about ${depth.toFixed(1)} m`,
+            label: t("Living roots where yours has none"),
+            detail: t("{option} roots reach about {m} m", { option: optionName(i), m: num(Number(depth.toFixed(1))) }),
           },
         };
       }
@@ -201,21 +208,21 @@ export function keyMoments(strategies: Strategy[], conditions: Conditions, steps
   return [exposed, widest.water?.moment, widest.roots?.moment].filter((m): m is KeyMoment => Boolean(m));
 }
 
-const CROP_LABELS: Record<string, string> = { rye_cover: "Rye cover crop" };
+export const CROP_LABELS: Record<string, string> = { rye_cover: "Rye cover crop" };
 
 export function describe(frame: PlotFrame, cropNames: Record<string, string>): string {
-  const name = frame.crop ? (CROP_LABELS[frame.crop] ?? cropNames[frame.crop] ?? frame.crop) : "";
+  const name = frame.crop ? (CROP_LABELS[frame.crop] ? t(CROP_LABELS[frame.crop]) : (cropNames[frame.crop] ?? frame.crop)) : "";
   switch (frame.state) {
     case "bare":
-      return "Bare soil";
+      return t("Bare soil");
     case "planted":
-      return `${name}, just sown (little cover yet)`;
+      return t("{name}, just sown (little cover yet)", { name });
     case "cover":
-      return `${name}, protecting the soil`;
+      return t("{name}, protecting the soil", { name });
     case "crop":
-      if (frame.ripe) return `${name}, ready to harvest`;
-      if (frame.growth < 0.4) return `${name}, resting over winter`;
-      return frame.growth >= 1 ? `${name}, full canopy` : `${name}, growing`;
+      if (frame.ripe) return t("{name}, ready to harvest", { name });
+      if (frame.growth < 0.4) return t("{name}, resting over winter", { name });
+      return frame.growth >= 1 ? t("{name}, full canopy", { name }) : t("{name}, growing", { name });
   }
 }
 
@@ -260,18 +267,18 @@ export function rootProfile(frame: PlotFrame): RootProfile {
 
 /** Compact label for the 3D plot HUD badge. */
 export function shortStateLabel(frame: PlotFrame, cropNames: Record<string, string>): string {
-  const name = frame.crop ? (CROP_LABELS[frame.crop] ?? cropNames[frame.crop] ?? frame.crop) : "";
+  const name = frame.crop ? (CROP_LABELS[frame.crop] ? t(CROP_LABELS[frame.crop]) : (cropNames[frame.crop] ?? frame.crop)) : "";
   switch (frame.state) {
     case "bare":
-      return "Bare soil";
+      return t("Bare soil");
     case "planted":
-      return `${name} · Just sown`;
+      return t("{name} · Just sown", { name });
     case "cover":
-      return `${name} · Living cover`;
+      return t("{name} · Living cover", { name });
     case "crop":
-      if (frame.ripe) return `${name} · Ready to harvest`;
-      if (frame.growth < 0.4) return `${name} · Overwintering`;
-      return frame.growth >= 1 ? `${name} · Full canopy` : `${name} · Growing`;
+      if (frame.ripe) return t("{name} · Ready to harvest", { name });
+      if (frame.growth < 0.4) return t("{name} · Overwintering", { name });
+      return frame.growth >= 1 ? t("{name} · Full canopy", { name }) : t("{name} · Growing", { name });
   }
 }
 
@@ -280,10 +287,10 @@ export function yearCropLabel(strategy: Strategy, yearIndex: number, cropNames: 
   if (strategy.years.length === 0) return "";
   const entry = strategy.years[yearIndex % strategy.years.length];
   if (!entry) return "";
-  const crop = CROP_LABELS[entry.crop] ?? cropNames[entry.crop] ?? entry.crop;
+  const crop = CROP_LABELS[entry.crop] ? t(CROP_LABELS[entry.crop]) : (cropNames[entry.crop] ?? entry.crop);
   const calYear = strategy.calendar[yearIndex % strategy.calendar.length];
   const hasCover = entry.cover || Boolean(calYear?.some((m) => m.state === "cover"));
-  return hasCover ? `${crop} + rye cover` : crop;
+  return hasCover ? t("{crop} + rye cover", { crop }) : crop;
 }
 
 const PLOT_SPAN = 5.4;

@@ -51,6 +51,8 @@ class AnalyzeRequest(BaseModel):
     """The farmer's own yield, price and cost for a crop, by crop key."""
     own_cover_cost: float | None = Field(None, ge=0, le=10_000)
     """The farmer's own cost of a winter rye cover crop, per acre."""
+    language: Literal["en", "fr"] = "en"
+    """The language of every sentence in the answer."""
 
 
 class Evidence(BaseModel):

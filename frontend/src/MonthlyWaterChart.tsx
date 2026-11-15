@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MONTH_NAMES } from "./season";
+import { t } from "./i18n";
 
 const MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
@@ -41,11 +42,11 @@ export default function MonthlyWaterChart({ rain, et0, selectedMonth, onSelectMo
   return (
     <figure className="chart">
       <div className="chart-head">
-        <span className="chart-title">Monthly water balance</span>
-        <span className="chart-badge">Click any month to inspect &amp; jump 3D view</span>
+        <span className="chart-title">{t("Monthly water balance")}</span>
+        <span className="chart-badge">{t("Click any month to inspect & jump 3D view")}</span>
       </div>
       <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} role="group" aria-labelledby="water-chart-title">
-        <title id="water-chart-title">Average rain and evaporation demand by month</title>
+        <title id="water-chart-title">{t("Average rain and evaporation demand by month")}</title>
         <line className="grid-line" x1={padLeft} y1={y(max)} x2={svgWidth - 2} y2={y(max)} />
         <line className="grid-line" x1={padLeft} y1={y(max / 2)} x2={svgWidth - 2} y2={y(max / 2)} />
         <line className="grid-line" x1={padLeft} y1={bottom} x2={svgWidth - 2} y2={bottom} />
@@ -72,7 +73,7 @@ export default function MonthlyWaterChart({ rain, et0, selectedMonth, onSelectMo
               role="button"
               tabIndex={0}
               aria-pressed={isSelected}
-              aria-label={`${MONTH_NAMES[i]}: Rain ${Math.round(rain[i])} mm, evaporation demand ${Math.round(et0[i])} mm`}
+              aria-label={t("{month}: Rain {rain} mm, evaporation demand {et0} mm", { month: t(MONTH_NAMES[i]), rain: Math.round(rain[i]), et0: Math.round(et0[i]) })}
               onMouseEnter={() => setHoveredMonth(i)}
               onMouseLeave={() => setHoveredMonth((prev) => (prev === i ? null : prev))}
               onFocus={() => setHoveredMonth(i)}
@@ -87,10 +88,10 @@ export default function MonthlyWaterChart({ rain, et0, selectedMonth, onSelectMo
             >
               <rect className="month-hit" x={sx + 1} y={padTop - 2} width={slot - 2} height={height + 24} rx={5} />
               <rect className="rain" x={sx + 3} y={y(rain[i])} width={bar} height={bottom - y(rain[i])} rx={2}>
-                <title>{`Rain ${Math.round(rain[i])} mm`}</title>
+                <title>{t("Rain {mm} mm", { mm: Math.round(rain[i]) })}</title>
               </rect>
               <rect className="et0" x={sx + 3 + bar + 1} y={y(et0[i])} width={bar} height={bottom - y(et0[i])} rx={2}>
-                <title>{`Evaporation demand ${Math.round(et0[i])} mm`}</title>
+                <title>{t("Evaporation demand {mm} mm", { mm: Math.round(et0[i]) })}</title>
               </rect>
               <rect className="month-pill" x={sx + 2} y={bottom + 4} width={slot - 4} height={16} rx={4} />
               <text className="month-label" x={sx + slot / 2} y={bottom + 15} textAnchor="middle">
@@ -101,23 +102,23 @@ export default function MonthlyWaterChart({ rain, et0, selectedMonth, onSelectMo
         })}
       </svg>
       <figcaption>
-        <span className="key rain" /> Rain <span className="key et0" /> Water the air can take up (mm per month)
+        <span className="key rain" /> {t("Rain")} <span className="key et0" /> {t("Water the air can take up (mm per month)")}
       </figcaption>
       <div className="chart-readout" aria-live="polite">
         {activeMonth !== null ? (
           <>
-            <strong>{MONTH_NAMES[activeMonth]}</strong>
-            <span>{`Rain ${activeRain} mm`}</span>
-            <span>{`Evaporation demand ${activeEt0} mm`}</span>
+            <strong>{t(MONTH_NAMES[activeMonth])}</strong>
+            <span>{t("Rain {mm} mm", { mm: activeRain })}</span>
+            <span>{t("Evaporation demand {mm} mm", { mm: activeEt0 })}</span>
             <span className={activeDiff < 0 ? "water-deficit" : "water-surplus"}>
               {activeDiff < 0
-                ? `${Math.abs(activeDiff)} mm deficit (crops draw on soil water)`
-                : `+${activeDiff} mm surplus`}
+                ? t("{mm} mm deficit (crops draw on soil water)", { mm: Math.abs(activeDiff) })
+                : t("+{mm} mm surplus", { mm: activeDiff })}
             </span>
-            <span className="chart-sync-tag">{pinnedMonth === activeMonth ? "Viewing in 3D ↓" : "Click to jump 3D ↓"}</span>
+            <span className="chart-sync-tag">{pinnedMonth === activeMonth ? t("Viewing in 3D ↓") : t("Click to jump 3D ↓")}</span>
           </>
         ) : (
-          <span className="chart-prompt">Hover or click a month to inspect its water balance and jump the 3D view.</span>
+          <span className="chart-prompt">{t("Hover or click a month to inspect its water balance and jump the 3D view.")}</span>
         )}
       </div>
     </figure>

@@ -29,6 +29,14 @@ conda create -n nasa-challenge python=3.14
 ./scripts/lint
 ```
 
+## Deploy on Vercel
+
+`vercel.json` builds the React site (`frontend/dist`) and serves the FastAPI app as one
+Python function (`api/index.py`, packages in `requirements.txt`, Python from
+`.python-version`). On vercel.com: **Add New → Project → import this GitHub repo →
+Deploy** (no settings to change). Every push to `main` redeploys. No keys are needed: the
+data services are public. The response cache lives in `/tmp` per instance.
+
 ## Layout
 
 | Path | What |
@@ -65,6 +73,9 @@ conda create -n nasa-challenge python=3.14
    a crop the budget doesn't cover, the farmer enters their own yield, price and cost,
    which always replace the budget. Costs leave out land, so this compares rotations on
    the same field; it is not a profit forecast.
+
+The whole tool works in **English or French** (the EN | FR switch in the header): every
+screen and every sentence of the answer. French follows Canadian usage.
 
 The tool suggests options to explore. It does not decide: every option lists what to
 check with a local advisor.

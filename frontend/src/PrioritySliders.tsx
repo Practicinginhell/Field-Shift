@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { Criterion, Priorities } from "./types";
+import { t } from "./i18n";
 
 export const CRITERION_NAMES: Record<Criterion, string> = {
   water: "Save water",
@@ -99,7 +100,7 @@ function rowClass(val: number): string {
 export default function PrioritySliders({ priorities, onChange }: Props) {
   return (
     <div className="priorities">
-      <p className="hint">0 = skip, 5 = top priority — sets how much each goal weighs.</p>
+      <p className="hint">{t("0 = skip, 5 = top priority — sets how much each goal weighs.")}</p>
       <div className="priority-list">
         {(Object.keys(CRITERION_NAMES) as Criterion[]).map((c) => {
           const val = priorities[c];
@@ -109,7 +110,7 @@ export default function PrioritySliders({ priorities, onChange }: Props) {
                 <span className="priority-badge" aria-hidden="true">
                   {CRITERION_ICONS[c]}
                 </span>
-                <span className="priority-label-text">{CRITERION_NAMES[c]}</span>
+                <span className="priority-label-text">{t(CRITERION_NAMES[c])}</span>
               </span>
               <span className="priority-slider-wrap">
                 <input
@@ -118,7 +119,7 @@ export default function PrioritySliders({ priorities, onChange }: Props) {
                   max={5}
                   step={1}
                   value={val}
-                  aria-label={CRITERION_NAMES[c]}
+                  aria-label={t(CRITERION_NAMES[c])}
                   style={{ "--pct": `${val * 20}%` } as CSSProperties}
                   onChange={(e) => onChange({ ...priorities, [c]: Number(e.target.value) })}
                 />

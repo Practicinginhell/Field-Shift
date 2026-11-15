@@ -1,5 +1,6 @@
 import { CRITERION_NAMES } from "./PrioritySliders";
 import type { Criterion, Priorities, Strategy } from "./types";
+import { num, t } from "./i18n";
 
 const BASE_CRITERIA = Object.keys(CRITERION_NAMES) as Criterion[];
 
@@ -54,32 +55,33 @@ export default function ComparisonMatrix({
     <div className="matrix-shell">
       <div className="matrix-head-note">
         <p className="hint">
-          Select any row to inspect its reasons, evidence, gaps, and local checks below — and highlight it in 3D. Columns
-          follow your priority weights (0 = de-emphasised).
+          {t(
+            "Select any row to inspect its reasons, evidence, gaps, and local checks below — and highlight it in 3D. Columns follow your priority weights (0 = de-emphasised).",
+          )}
         </p>
       </div>
       <div className="matrix-wrap">
-        <table className="comparison-matrix" aria-label="Rotations compared at a glance">
+        <table className="comparison-matrix" aria-label={t("Rotations compared at a glance")}>
           <thead>
             <tr>
               <th scope="col" className="col-strategy">
-                Rotation
+                {t("Rotation")}
               </th>
               <th scope="col" className="col-fit">
-                Fit score
+                {t("Fit score")}
                 <small>0–100</small>
               </th>
               {criteria.map((c) => {
                 const w = weights[c];
                 return (
-                  <th key={c} scope="col" className={w === 0 ? "is-zero-weight" : undefined} title={CRITERION_NAMES[c]}>
-                    <span>{CRITERION_NAMES[c]}</span>
-                    <small>{w === 0 ? "Priority 0" : `Priority ${w}/5`}</small>
+                  <th key={c} scope="col" className={w === 0 ? "is-zero-weight" : undefined} title={t(CRITERION_NAMES[c])}>
+                    <span>{t(CRITERION_NAMES[c])}</span>
+                    <small>{w === 0 ? t("Priority 0") : t("Priority {w}/5", { w })}</small>
                   </th>
                 );
               })}
               <th scope="col" className="col-actions">
-                Details
+                {t("Details")}
               </th>
             </tr>
           </thead>
@@ -87,7 +89,7 @@ export default function ComparisonMatrix({
             {orderedStrategies.map((s) => {
               const isBase = s.is_baseline;
               if (!isBase) optCounter += 1;
-              const tag = isBase ? "Yours" : `Opt ${optCounter}`;
+              const tag = isBase ? t("Yours") : t("Opt {n}", { n: optCounter });
               const isSelected = selectedIds.includes(s.id);
               const isPrimary = selectedIds[0] === s.id;
               const isHighlighted = highlightedId === s.id;
@@ -112,22 +114,22 @@ export default function ComparisonMatrix({
                   <th scope="row" className="cell-strategy">
                     <div className="matrix-role-row">
                       <span className="matrix-tag">{tag}</span>
-                      <span className="kind">{isBase ? "Your current rotation" : "Option to explore"}</span>
+                      <span className="kind">{isBase ? t("Your current rotation") : t("Option to explore")}</span>
                     </div>
                     <strong className="matrix-name">{s.name}</strong>
                     <div className="matrix-meta">
-                      {s.water_demand_mm} mm/yr · {s.cover_months} mo cover
+                      {t("{mm} mm/yr · {months} mo cover", { mm: s.water_demand_mm, months: num(s.cover_months) })}
                       {s.rainfed_shortfall_mm > 0
                         ? irrigated
-                          ? ` · ${s.rainfed_shortfall_mm} mm irrigation`
-                          : ` · −${s.rainfed_shortfall_mm} mm shortfall`
+                          ? t(" · {mm} mm irrigation", { mm: s.rainfed_shortfall_mm })
+                          : t(" · −{mm} mm shortfall", { mm: s.rainfed_shortfall_mm })
                         : ""}
                     </div>
                   </th>
                   <td
                     className={fitBest ? "cell-fit is-best" : "cell-fit"}
-                    data-label="Fit score (0–100)"
-                    title={fitBest ? "Highest fit score among shown rotations" : undefined}
+                    data-label={t("Fit score (0–100)")}
+                    title={fitBest ? t("Highest fit score among shown rotations") : undefined}
                   >
                     <span className="cell-score">{fit}</span>
                     {!isBase && (
@@ -135,7 +137,7 @@ export default function ComparisonMatrix({
                         {formatDelta(fitDiff)}
                       </span>
                     )}
-                    {fitBest && <span className="best-dot" aria-label="Highest in column" />}
+                    {fitBest && <span className="best-dot" aria-label={t("Highest in column")} />}
                   </td>
                   {criteria.map((c) => {
                     const val = pct(s.scores[c]);
@@ -148,8 +150,8 @@ export default function ComparisonMatrix({
                       <td
                         key={c}
                         className={cellClass || undefined}
-                        data-label={`${CRITERION_NAMES[c]} (wt ${weights[c]})`}
-                        title={best ? `Highest score for ${CRITERION_NAMES[c]}` : undefined}
+                        data-label={t("{name} (wt {w})", { name: t(CRITERION_NAMES[c]), w: weights[c] })}
+                        title={best ? t("Highest score for {name}", { name: t(CRITERION_NAMES[c]) }) : undefined}
                       >
                         <span className="cell-score">{val}</span>
                         {!isBase && (
@@ -157,30 +159,30 @@ export default function ComparisonMatrix({
                             {formatDelta(diff)}
                           </span>
                         )}
-                        {best && <span className="best-dot" aria-label="Highest in column" />}
+                        {best && <span className="best-dot" aria-label={t("Highest in column")} />}
                       </td>
                     );
                   })}
-                  <td className="cell-actions" data-label="Details" onClick={(e) => e.stopPropagation()}>
+                  <td className="cell-actions" data-label={t("Details")} onClick={(e) => e.stopPropagation()}>
                     <div className="matrix-action-group">
                       <button
                         type="button"
                         className={isPrimary ? "secondary active" : "secondary"}
                         aria-pressed={isPrimary}
-                        aria-label={`Inspect ${s.name}`}
+                        aria-label={t("Inspect {name}", { name: s.name })}
                         onClick={() => onSelectStrategy(s.id)}
                       >
-                        {isPrimary ? "Inspecting" : "Inspect"}
+                        {isPrimary ? t("Inspecting") : t("Inspect")}
                       </button>
                       {onToggleSecond && !isPrimary && orderedStrategies.length > 1 && (
                         <button
                           type="button"
                           className={isSelected ? "link active" : "link"}
                           aria-pressed={isSelected}
-                          aria-label={isSelected ? `Hide second detail ${s.name}` : `Compare details with ${s.name}`}
+                          aria-label={isSelected ? t("Hide second detail {name}", { name: s.name }) : t("Compare details with {name}", { name: s.name })}
                           onClick={() => onToggleSecond(s.id)}
                         >
-                          {isSelected ? "Pinned 2nd" : "+ Compare 2nd"}
+                          {isSelected ? t("Pinned 2nd") : t("+ Compare 2nd")}
                         </button>
                       )}
                     </div>

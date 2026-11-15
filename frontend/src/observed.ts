@@ -3,6 +3,7 @@
 
 import { type PlotFrame, SHORT_MONTHS } from "./season";
 import type { ObservedField, ObservedMonth, ObservedYear } from "./types";
+import { num, t } from "./i18n";
 
 /** NDVI → plant height in the scene: 0.1 (bare) → small, about 0.85 (full canopy) → 1. */
 function growthFromNdvi(ndvi: number): number {
@@ -39,7 +40,7 @@ function bareFrame(rotationYear: number): PlotFrame {
   return { state: "bare", crop: null, growth: 0, water_mm: 0, rotationYear, ripe: false };
 }
 
-const STATE_WORDS: Record<ObservedMonth["state"], string> = {
+export const STATE_WORDS: Record<ObservedMonth["state"], string> = {
   green: "green",
   partial: "partly green",
   bare: "bare or just sown",
@@ -49,12 +50,12 @@ const STATE_WORDS: Record<ObservedMonth["state"], string> = {
 
 /** What the month looked like, in words only: "green", "bare or just sown", "likely snow-covered". */
 export function plainStateText(m: ObservedMonth): string {
-  return m.state === "no_view" || m.ndvi === null ? STATE_WORDS.no_view : STATE_WORDS[m.state];
+  return t(m.state === "no_view" || m.ndvi === null ? STATE_WORDS.no_view : STATE_WORDS[m.state]);
 }
 
 export function stateText(m: ObservedMonth): string {
-  if (m.state === "no_view" || m.ndvi === null) return STATE_WORDS.no_view;
-  return `${STATE_WORDS[m.state]} (NDVI ${m.ndvi.toFixed(2)}, ${m.ndvi_source})`;
+  if (m.state === "no_view" || m.ndvi === null) return t(STATE_WORDS.no_view);
+  return `${t(STATE_WORDS[m.state])} (NDVI ${num(Number(m.ndvi.toFixed(2)))}, ${m.ndvi_source})`;
 }
 
 export interface ObservedSummary {
@@ -85,12 +86,12 @@ export function flagText(m: ObservedMonth): string | null {
       const what =
         f.variable === "ndvi"
           ? f.direction === "low"
-            ? "Less green than expected"
-            : "Greener than expected"
+            ? t("Less green than expected")
+            : t("Greener than expected")
           : f.direction === "low"
-            ? "Drier soil than expected"
-            : "Wetter soil than expected";
-      const who = f.methods.length > 1 ? "both methods agree" : `${f.methods[0]} only`;
+            ? t("Drier soil than expected")
+            : t("Wetter soil than expected");
+      const who = f.methods.length > 1 ? t("both methods agree") : t("{method} only", { method: f.methods[0] });
       return `${what} (${who})`;
     })
     .join(" · ");
@@ -99,14 +100,17 @@ export function flagText(m: ObservedMonth): string | null {
 /** The crop classifier's reading of a year, or null when it had too few clear views. */
 export function modelText(y: ObservedYear): string | null {
   if (!y.model_crop || !y.model_crop_label || y.model_confidence == null) return null;
-  const base = `Satellite curve reads: ${y.model_crop_label} (${Math.round(y.model_confidence * 100)}% sure)`;
-  if (y.model_agrees === true) return `${base}, matches the crop map`;
-  if (y.model_agrees === false) return `${base}, not what the crop map says: worth a check`;
+  const base = t("Satellite curve reads: {crop} ({pct}% sure)", {
+    crop: y.model_crop_label,
+    pct: Math.round(y.model_confidence * 100),
+  });
+  if (y.model_agrees === true) return base + t(", matches the crop map");
+  if (y.model_agrees === false) return base + t(", not what the crop map says: worth a check");
   return base;
 }
 
 /** Day of the year (1–366, a non-leap year) → "Jul 20". */
 export function dayOfYearText(day: number): string {
   const d = new Date(Date.UTC(2023, 0, day));
-  return `${SHORT_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return t("{month} {day}", { month: t(SHORT_MONTHS[d.getUTCMonth()]), day: d.getUTCDate() });
 }

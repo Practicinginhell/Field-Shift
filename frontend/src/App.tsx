@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { getLang, num, saveLang, savedLang, setLang, t, type Lang } from "./i18n";
 
 import { analyze, fetchCropHistory, fetchCrops, fetchObserved } from "./api";
 import ComparisonMatrix from "./ComparisonMatrix";
@@ -74,24 +75,29 @@ export const PRESETS: Preset[] = [
 // "45.22° N, 75.80° W": easier to read than signed decimals.
 export function formatPlace(latitude: number, longitude: number): string {
   const ns = latitude >= 0 ? "N" : "S";
-  const ew = longitude >= 0 ? "E" : "W";
-  return `${Math.abs(latitude).toFixed(2)}° ${ns}, ${Math.abs(longitude).toFixed(2)}° ${ew}`;
+  const ew = longitude >= 0 ? t("E") : t("W");
+  // Two decimals always ("45.20°"), with a decimal comma in French.
+  const fixed = (v: number) => {
+    const text = Math.abs(v).toFixed(2);
+    return getLang() === "fr" ? text.replace(".", ",") : text;
+  };
+  return `${fixed(latitude)}° ${ns}, ${fixed(longitude)}° ${ew}`;
 }
 
 /** Where the margin numbers come from, for the "Your call" box. */
 function numbersSource(e: Economics, own: number): string {
-  const yours = own ? `your own for ${own} crop${own > 1 ? "s" : ""}` : "";
-  if (e.region) return `${e.region} 2026 budget${yours ? `, ${yours}` : ""}`;
-  return yours ? yours[0].toUpperCase() + yours.slice(1) : "No local budget: enter your own";
+  const yours = own ? (own > 1 ? t("your own for {n} crops", { n: own }) : t("your own for 1 crop")) : "";
+  if (e.region) return t("{region} 2026 budget", { region: e.region }) + (yours ? `, ${yours}` : "");
+  return yours ? yours[0].toUpperCase() + yours.slice(1) : t("No local budget: enter your own");
 }
 
 function summarizeGoals(priorities: Priorities): string {
   const ranked = (Object.entries(priorities) as [Criterion, number][])
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
-  if (ranked.length === 0) return "None weighted";
+  if (ranked.length === 0) return t("None weighted");
   const topScore = ranked[0][1];
-  const topNames = ranked.filter(([, v]) => v === topScore).map(([k]) => CRITERION_NAMES[k]);
+  const topNames = ranked.filter(([, v]) => v === topScore).map(([k]) => t(CRITERION_NAMES[k]));
   if (topNames.length <= 2) return topNames.join(", ");
   return `${topNames.slice(0, 2).join(", ")} +${topNames.length - 2}`;
 }
@@ -101,7 +107,7 @@ const DEFAULT_PRIORITIES: Priorities = { water: 3, soil: 3, nitrogen: 2, erosion
 type ThemeMode = "auto" | "light" | "dark";
 type ResultSectionId = "sec-answer" | "sec-compare" | "sec-more";
 
-const SECTION_LINKS: { id: ResultSectionId; label: string }[] = [
+export const SECTION_LINKS: { id: ResultSectionId; label: string }[] = [
   { id: "sec-answer", label: "Suggestion" },
   { id: "sec-compare", label: "Compare" },
   { id: "sec-more", label: "More detail" },
@@ -134,6 +140,12 @@ export default function App() {
   const [highlightedStrategyId, setHighlightedStrategyId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<ResultSectionId>("sec-answer");
   const [theme, setTheme] = useState<ThemeMode>("auto");
+  // English or French; i18n.ts holds the current one for t(), this state re-renders the page.
+  const [lang, setLangState] = useState<Lang>(() => {
+    const saved = savedLang();
+    setLang(saved);
+    return saved;
+  });
   const [error, setError] = useState<string | null>(null);
   const inputsRef = useRef<HTMLElement | null>(null);
   const moreRef = useRef<HTMLDetailsElement | null>(null);
@@ -197,9 +209,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchCrops()
+    fetchCrops(getLang())
       .then(setCrops)
-      .catch(() => setError("The server is not reachable. Start it with ./scripts/dev."));
+      .catch(() => setError(t("The server is not reachable. Start it with ./scripts/dev.")));
   }, []);
 
   const choosePreset = (p: Preset) => {
@@ -250,32 +262,36 @@ export default function App() {
     const request = ++historyRequest.current;
     editedSinceRequest.current = false;
     setHistoryLoading(true);
-    setHistoryNote("Reading this field's past crops from satellite crop maps… (U.S. fields can take a minute)");
+    setHistoryNote(t("Reading this field's past crops from satellite crop maps… (U.S. fields can take a minute)"));
     const stillWanted = () => request === historyRequest.current;
     try {
-      const history = await fetchCropHistory(lat, lon);
+      const history = await fetchCropHistory(lat, lon, getLang());
       if (!stillWanted()) return;
       const known = history.years.filter((y) => y.crop !== null);
       if (known.length === 0) {
         setHistoryNote(
-          "No crop map covers this point (we read U.S. and Canadian maps). The rotation below is unchanged: set it to what you grow.",
+          t("No crop map covers this point (we read U.S. and Canadian maps). The rotation below is unchanged: set it to what you grow."),
         );
         return;
       }
-      const listed = history.years.map((y) => `${y.year}: ${y.cdl_category ?? "no answer"}`).join(", ");
+      const listed = history.years.map((y) => `${y.year}: ${(y.crop && cropNames[y.crop]) || (y.cdl_category ?? t("no answer"))}`).join(", ");
       if (editedSinceRequest.current) {
-        setHistoryNote(`Past crops from ${history.source}: ${listed}. Your own edits were kept.`);
+        setHistoryNote(t("Past crops from {source}: {listed}. Your own edits were kept.", { source: history.source, listed }));
         return;
       }
       // An unknown year stays as a blank for the farmer: dropping it would make the
       // years on either side look back to back (corn, ?, corn read as corn after corn).
       setRotation(history.years.map((y) => year(y.crop ?? UNKNOWN_CROP)));
       const unknown = history.years.filter((y) => y.crop === null).map((y) => y.year);
-      const ask = unknown.length ? ` What did you grow in ${unknown.join(" and ")}? Choose it below.` : "";
-      setHistoryNote(`Filled from ${history.source}: ${listed}. Check it matches what you grew.${ask}`);
+      const ask = unknown.length ? t(" What did you grow in {years}? Choose it below.", { years: unknown.join(` ${t("and")} `) }) : "";
+      setHistoryNote(t("Filled from {source}: {listed}. Check it matches what you grew.", { source: history.source, listed }) + ask);
     } catch (e) {
       if (!stillWanted()) return;
-      setHistoryNote(`The crop map did not answer (${(e as Error).message}). The rotation below is unchanged: set it to what you grow.`);
+      setHistoryNote(
+        t("The crop map did not answer ({error}). The rotation below is unchanged: set it to what you grow.", {
+          error: (e as Error).message,
+        }),
+      );
     } finally {
       if (stillWanted()) setHistoryLoading(false);
     }
@@ -304,6 +320,7 @@ export default function App() {
         irrigated,
         priorities,
         excluded_crops: excluded,
+        language: getLang(),
         own_numbers: own,
         own_cover_cost: coverCost,
       });
@@ -318,12 +335,12 @@ export default function App() {
       setActiveSeasonMonth(null);
       setChartMonthRequest(null);
       // Satellite replay exists for the example fields only; others simply don't get one.
-      fetchObserved(latitude, longitude)
+      fetchObserved(latitude, longitude, getLang())
         .then((o) => stillWanted() && setObserved(o))
         .catch(() => stillWanted() && setObserved(null));
     } catch (e) {
       if (!stillWanted()) return;
-      setError(`Could not compare rotations: ${(e as Error).message}`);
+      setError(t("Could not compare rotations: {error}", { error: (e as Error).message }));
       setEditingInputs(true);
     } finally {
       if (stillWanted()) setBusy(false);
@@ -358,6 +375,18 @@ export default function App() {
     setTypedNumbers(typed);
     setOwnNumbers(own);
     setOwnCoverCost(coverCost);
+  };
+
+  // Every text switches at once: the page's own (t), crop names, and the answer's sentences.
+  const changeLanguage = (next: Lang) => {
+    if (next === lang) return;
+    setLang(next);
+    saveLang(next);
+    setLangState(next);
+    fetchCrops(next)
+      .then(setCrops)
+      .catch(() => setError(t("The server is not reachable. Start it with ./scripts/dev.")));
+    if (result) void run();
   };
 
   const openControl = (control: FarmerControl) => {
@@ -415,7 +444,7 @@ export default function App() {
     for (const s of result.strategies) {
       if (s.is_baseline) continue;
       opt += 1;
-      map.set(s.id, `Option ${opt}`);
+      map.set(s.id, t("Option {n}", { n: opt }));
     }
     return map;
   }, [result]);
@@ -436,7 +465,9 @@ export default function App() {
 
   const rotationSummary = rotation
     .map((y) =>
-      y.crop === UNKNOWN_CROP ? "unknown" : `${cropNames[y.crop] ?? y.crop.replaceAll("_", " ")}${y.cover ? " + cover" : ""}`,
+      y.crop === UNKNOWN_CROP
+        ? t("unknown")
+        : `${cropNames[y.crop] ?? y.crop.replaceAll("_", " ")}${y.cover ? t(" + cover") : ""}`,
     )
     .join(" – ");
 
@@ -451,11 +482,26 @@ export default function App() {
                 <h1>Field Shift</h1>
               </div>
               <p className="brand-promise">
-                Explore crop rotations for your field with 20 years of NASA climate data and your own priorities.
+                {t("Explore crop rotations for your field with 20 years of NASA climate data and your own priorities.")}
               </p>
             </div>
           </div>
-          <div className="theme-switch" role="group" aria-label="Color theme">
+          <div className="theme-switch" role="group" aria-label={t("Language")}>
+            {(["en", "fr"] as Lang[]).map((l) => (
+              <button
+                key={l}
+                type="button"
+                lang={l}
+                className={lang === l ? "theme-btn active" : "theme-btn"}
+                aria-pressed={lang === l}
+                aria-label={l === "en" ? "English" : "Français"}
+                onClick={() => changeLanguage(l)}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div className="theme-switch" role="group" aria-label={t("Color theme")}>
             {(["auto", "light", "dark"] as ThemeMode[]).map((mode) => (
               <button
                 key={mode}
@@ -464,7 +510,7 @@ export default function App() {
                 aria-pressed={theme === mode}
                 onClick={() => setTheme(mode)}
               >
-                {mode === "auto" ? "Auto" : mode === "light" ? "Light" : "Dark"}
+                {mode === "auto" ? t("Auto") : mode === "light" ? t("Light") : t("Dark")}
               </button>
             ))}
           </div>
@@ -475,9 +521,9 @@ export default function App() {
         <section
           ref={inputsRef}
           className={showCollapsedInputs ? "inputs is-collapsed" : result ? "inputs is-reopened" : "inputs"}
-          aria-label="Your field"
+          aria-label={t("Your field")}
         >
-          <h2 className="step-heading">1. Your field</h2>
+          <h2 className="step-heading">{t("1. Your field")}</h2>
           <div className="presets">
             {PRESETS.map((p) => {
               const active = isActivePreset(p);
@@ -486,23 +532,23 @@ export default function App() {
                   key={p.label}
                   type="button"
                   className={active ? "preset-card active" : "preset-card"}
-                  aria-label={p.label}
+                  aria-label={t(p.label)}
                   aria-pressed={active}
                   onClick={() => choosePreset(p)}
                 >
-                  <strong className="preset-title">{p.label}</strong>
-                  <span className="preset-desc">{p.summary}</span>
+                  <strong className="preset-title">{t(p.label)}</strong>
+                  <span className="preset-desc">{t(p.summary)}</span>
                 </button>
               );
             })}
           </div>
           <MapView latitude={latitude} longitude={longitude} onPick={pickField} />
           <p className="hint">
-            Your field (the pin): <strong>{formatPlace(latitude, longitude)}</strong>. Click the map to move it, and we
-            then read its past crops.
+            {t("Your field (the pin):")} <strong>{formatPlace(latitude, longitude)}</strong>.{" "}
+            {t("Click the map to move it, and we then read its past crops.")}
           </p>
 
-          <h2 className="step-heading">2. What you grow</h2>
+          <h2 className="step-heading">{t("2. What you grow")}</h2>
           {crops.length > 0 && <RotationEditor crops={crops} rotation={rotation} onChange={editRotation} />}
           <button
             type="button"
@@ -510,7 +556,7 @@ export default function App() {
             disabled={historyLoading}
             onClick={() => void readCropHistory(latitude, longitude)}
           >
-            Fill from past crop maps (U.S. and Canada)
+            {t("Fill from past crop maps (U.S. and Canada)")}
           </button>
           {historyNote && (
             <p className={historyLoading ? "hint status-box is-loading" : "hint status-box"} aria-live="polite">
@@ -518,9 +564,9 @@ export default function App() {
             </p>
           )}
 
-          <h2 className="step-heading">3. Your farm</h2>
+          <h2 className="step-heading">{t("3. Your farm")}</h2>
           <h3 id="control-priorities" tabIndex={-1} className="sub-heading">
-            What matters most to you
+            {t("What matters most to you")}
           </h3>
           <PrioritySliders
             priorities={priorities}
@@ -529,7 +575,7 @@ export default function App() {
               setDirty(true);
             }}
           />
-          <h3 className="sub-heading">Your water and your limits</h3>
+          <h3 className="sub-heading">{t("Your water and your limits")}</h3>
           <label id="control-water" tabIndex={-1} className={irrigated ? "check toggle-card is-active" : "check toggle-card"}>
             <input
               type="checkbox"
@@ -539,7 +585,7 @@ export default function App() {
                 setDirty(true);
               }}
             />
-            <span className="toggle-card-label">This field is irrigated</span>
+            <span className="toggle-card-label">{t("This field is irrigated")}</span>
           </label>
           <details id="control-crops" tabIndex={-1} className="excluded">
             <summary>
@@ -550,11 +596,11 @@ export default function App() {
                 </svg>
               </span>
               <span className="excluded-copy">
-                <span className="excluded-label">Crops you can't grow or sell here</span>
-                <span className="excluded-sub">No buyer or equipment</span>
+                <span className="excluded-label">{t("Crops you can't grow or sell here")}</span>
+                <span className="excluded-sub">{t("No buyer or equipment")}</span>
               </span>
               <span className="excluded-trailing">
-                {excludedCrops.length > 0 && <span className="excluded-count">{excludedCrops.length} ruled out</span>}
+                {excludedCrops.length > 0 && <span className="excluded-count">{t("{n} ruled out", { n: excludedCrops.length })}</span>}
                 <span className="excluded-chev" aria-hidden="true">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 6l4 4 4-4" />
@@ -584,7 +630,7 @@ export default function App() {
           </details>
 
           <button type="button" className="primary" onClick={() => run()} disabled={busy || crops.length === 0 || rotationIncomplete}>
-            <span className="primary-cta-text">{busy ? "Reading NASA data…" : "Compare rotations"}</span>
+            <span className="primary-cta-text">{busy ? t("Reading NASA data…") : t("Compare rotations")}</span>
             {!busy && (
               <span className="primary-cta-arrow" aria-hidden="true">
                 <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -594,23 +640,22 @@ export default function App() {
               </span>
             )}
           </button>
-          {rotationIncomplete && <p className="hint">Choose a crop for every year in your rotation to compare.</p>}
+          {rotationIncomplete && <p className="hint">{t("Choose a crop for every year in your rotation to compare.")}</p>}
           {error && (
             <div className="error-card" role="alert">
               <p>{error}</p>
               <p className="hint">
-                Confirm the backend server is running (<code>./scripts/dev</code>) or select another field, then try
-                again.
+                {t("Confirm the backend server is running ({cmd}) or select another field, then try again.", { cmd: "./scripts/dev" })}
               </p>
             </div>
           )}
         </section>
 
-        <section className="results" aria-label="Results" aria-live="polite">
+        <section className="results" aria-label={t("Results")} aria-live="polite">
           {busy && (
             <div className="loading-panel" aria-busy="true">
-              <p className="loading-status" role="status" aria-label="Comparison status">
-                Reading NASA POWER 20-year climate, checking local soil maps, and comparing crop rotations…
+              <p className="loading-status" role="status" aria-label={t("Comparison status")}>
+                {t("Reading NASA POWER 20-year climate, checking local soil maps, and comparing crop rotations…")}
               </p>
               <div className="skeleton-kpis" aria-hidden="true">
                 <div className="skeleton-box" />
@@ -625,38 +670,39 @@ export default function App() {
 
           {!result && !busy && (
             <div className="intro-card">
-              <p className="kind">Field-level rotation comparison</p>
-              <h2>How it works</h2>
+              <p className="kind">{t("Field-level rotation comparison")}</p>
+              <h2>{t("How it works")}</h2>
               <p>
-                Pick a field, tell us your current rotation and what matters to you. The tool reads 20 years of NASA
-                POWER climate data for the area, and U.S. or Canadian soil maps where they exist. It then compares your
-                rotation with other options and shows the evidence behind each one.
+                {t(
+                  "Pick a field, tell us your current rotation and what matters to you. The tool reads 20 years of NASA POWER climate data for the area, and U.S. or Canadian soil maps where they exist. It then compares your rotation with other options and shows the evidence behind each one.",
+                )}
               </p>
               <ol className="intro-steps">
                 <li>
-                  <strong>1. Locate your field</strong>
-                  <span>Choose one of the three example fields or click your own field on the map.</span>
+                  <strong>{t("1. Locate your field")}</strong>
+                  <span>{t("Choose one of the three example fields or click your own field on the map.")}</span>
                 </li>
                 <li>
-                  <strong>2. What you grow</strong>
-                  <span>Enter the crops you grow, year by year, or fill them in from past crop maps.</span>
+                  <strong>{t("2. What you grow")}</strong>
+                  <span>{t("Enter the crops you grow, year by year, or fill them in from past crop maps.")}</span>
                 </li>
                 <li>
-                  <strong>3. Tell us about your farm</strong>
-                  <span>What matters most, your water, and crops you can't grow or sell.</span>
+                  <strong>{t("3. Tell us about your farm")}</strong>
+                  <span>{t("What matters most, your water, and crops you can't grow or sell.")}</span>
                 </li>
               </ol>
-              <div className="intro-preview" aria-label="What your comparison includes">
-                <span>What you get:</span>
+              <div className="intro-preview" aria-label={t("What your comparison includes")}>
+                <span>{t("What you get:")}</span>
                 <ul>
-                  <li>Your field's rain, frost-free season and soil</li>
-                  <li>Other rotations compared with yours: what each is better and worse for, and what to check locally</li>
-                  <li>Your field through the seasons, and what satellites saw on it</li>
+                  <li>{t("Your field's rain, frost-free season and soil")}</li>
+                  <li>{t("Other rotations compared with yours: what each is better and worse for, and what to check locally")}</li>
+                  <li>{t("Your field through the seasons, and what satellites saw on it")}</li>
                 </ul>
               </div>
               <p className="intro-decision-line">
-                It suggests options to explore. You decide, with the people who know your area: your extension office,
-                agronomist or crop advisor.
+                {t(
+                  "It suggests options to explore. You decide, with the people who know your area: your extension office, agronomist or crop advisor.",
+                )}
               </p>
             </div>
           )}
@@ -667,19 +713,19 @@ export default function App() {
                 <div className="summary-bar">
                   <div className="summary-chips">
                     <span className="summary-chip">
-                      <small>Field</small>
+                      <small>{t("Field")}</small>
                       <strong>{formatPlace(result.latitude, result.longitude)}</strong>
                     </span>
                     <span className="summary-chip">
-                      <small>Rotation</small>
+                      <small>{t("Rotation")}</small>
                       <strong>{rotationSummary}</strong>
                     </span>
                     <span className="summary-chip">
-                      <small>Water</small>
-                      <strong>{irrigated ? "Irrigated" : "Rainfed"}</strong>
+                      <small>{t("Water")}</small>
+                      <strong>{irrigated ? t("Irrigated") : t("Rainfed")}</strong>
                     </span>
                     <span className="summary-chip">
-                      <small>Goals</small>
+                      <small>{t("Goals")}</small>
                       <strong>{summarizeGoals(priorities)}</strong>
                     </span>
                   </div>
@@ -689,8 +735,8 @@ export default function App() {
                     aria-expanded={editingInputs}
                     title={
                       editingInputs
-                        ? "Hide field, rotation, and priority controls"
-                        : "Open field map, crop rotation, and priority sliders"
+                        ? t("Hide field, rotation, and priority controls")
+                        : t("Open field map, crop rotation, and priority sliders")
                     }
                     onClick={() => setEditingInputs((open) => !open)}
                   >
@@ -703,11 +749,11 @@ export default function App() {
                         strokeLinejoin="round"
                       />
                     </svg>
-                    <span>{editingInputs ? "Done editing" : "Edit field & goals"}</span>
+                    <span>{editingInputs ? t("Done editing") : t("Edit field & goals")}</span>
                   </button>
                 </div>
 
-                <nav className="section-nav" aria-label="Result sections">
+                <nav className="section-nav" aria-label={t("Result sections")}>
                   {SECTION_LINKS.map((sec) => (
                     <a
                       key={sec.id}
@@ -718,16 +764,16 @@ export default function App() {
                         setActiveSection(sec.id);
                       }}
                     >
-                      {sec.label}
+                      {t(sec.label)}
                     </a>
                   ))}
                 </nav>
 
                 {dirty && (
                   <div className="stale-banner" role="status">
-                    <span>Your rotation or priorities changed since this comparison.</span>
+                    <span>{t("Your rotation or priorities changed since this comparison.")}</span>
                     <button type="button" className="secondary active" onClick={() => run()}>
-                      Update comparison
+                      {t("Update comparison")}
                     </button>
                   </div>
                 )}
@@ -749,10 +795,11 @@ export default function App() {
                 </section>
 
                 <section id="sec-compare" className="result-section">
-                  <h2>All options side by side</h2>
+                  <h2>{t("All options side by side")}</h2>
                   <p className="hint">
-                    Compared with your current rotation, on the goals you rated. These are options to explore, not
-                    recommendations.
+                    {t(
+                      "Compared with your current rotation, on the goals you rated. These are options to explore, not recommendations.",
+                    )}
                   </p>
                   <YourCall
                     goals={summarizeGoals(priorities)}
@@ -771,7 +818,7 @@ export default function App() {
                     onSelectStrategy={selectDetailStrategy}
                   />
                   <details className="all-scores">
-                    <summary>Show all scores</summary>
+                    <summary>{t("Show all scores")}</summary>
                     <ComparisonMatrix
                       strategies={result.strategies}
                       weights={result.weights}
@@ -789,6 +836,7 @@ export default function App() {
                         key={s.id}
                         strategy={s}
                         variant="detail"
+                        cropNames={cropNames}
                         optionPrefix={alternativeIndexMap.get(s.id)}
                         baselineScores={baselineStrategy?.scores}
                         localChecks={uniqueChecks.get(s.id)}
@@ -802,7 +850,7 @@ export default function App() {
 
                   {sharedChecks.length > 0 && (
                     <div className="shared-review-card">
-                      <h3>Check locally for any change</h3>
+                      <h3>{t("Check locally for any change")}</h3>
                       <ul>
                         {sharedChecks.map((t) => (
                           <li key={t}>{t}</li>
@@ -813,7 +861,7 @@ export default function App() {
 
                   {result.removed.length > 0 && (
                     <details className="removed">
-                      <summary>Options ruled out for this field ({result.removed.length})</summary>
+                      <summary>{t("Options ruled out for this field ({n})", { n: result.removed.length })}</summary>
                       <ul>
                         {result.removed.map((r) => (
                           <li key={r.name}>
@@ -831,34 +879,35 @@ export default function App() {
                   className="result-section more-detail"
                 >
                   <summary>
-                    <span className="more-title">More detail for you and your advisor</span>
+                    <span className="more-title">{t("More detail for you and your advisor")}</span>
                     <span className="more-sub">
-                      Your field's weather and soil, every option through the seasons in 3D, and what satellites saw
-                      on the field.
+                      {t(
+                        "Your field's weather and soil, every option through the seasons in 3D, and what satellites saw on the field.",
+                      )}
                     </span>
                   </summary>
                 <section id="sec-conditions" className="result-section">
-                  <h2>Your field's conditions ({result.conditions.period})</h2>
+                  <h2>{t("Your field's conditions ({period})", { period: result.conditions.period })}</h2>
                   <div className="conditions-kpis">
                     <div className="kpi">
-                      <span className="kpi-label">Rain a year</span>
+                      <span className="kpi-label">{t("Rain a year")}</span>
                       <strong className="kpi-value">{result.conditions.annual_precip_mm} mm</strong>
                     </div>
                     <div className="kpi">
-                      <span className="kpi-label">Frost-free season</span>
-                      <strong className="kpi-value">{result.conditions.frost_free_days} days</strong>
+                      <span className="kpi-label">{t("Frost-free season")}</span>
+                      <strong className="kpi-value">{t("{n} days", { n: result.conditions.frost_free_days })}</strong>
                     </div>
                     <div className="kpi">
-                      <span className="kpi-label">Soil</span>
-                      <strong className="kpi-value">{result.conditions.soil?.component ?? "No soil map here"}</strong>
+                      <span className="kpi-label">{t("Soil")}</span>
+                      <strong className="kpi-value">{result.conditions.soil?.component ?? t("No soil map here")}</strong>
                     </div>
                     {result.conditions.erosion_susceptibility !== "unknown" && (
                       <div className="kpi">
-                        <span className="kpi-label">Soil erodibility</span>
+                        <span className="kpi-label">{t("Soil erodibility")}</span>
                         <strong className="kpi-value">
-                          {result.conditions.erosion_susceptibility}
+                          {t(result.conditions.erosion_susceptibility)}
                           {result.conditions.soil?.slope_percent != null &&
-                            ` (slope ${result.conditions.soil.slope_percent}%)`}
+                            t(" (slope {pct}%)", { pct: num(result.conditions.soil.slope_percent) })}
                         </strong>
                       </div>
                     )}
@@ -882,7 +931,7 @@ export default function App() {
                 </section>
 
                 <section id="sec-seasons" className="result-section">
-                  <Suspense fallback={<p className="hint">Loading the 3D season view…</p>}>
+                  <Suspense fallback={<p className="hint">{t("Loading the 3D season view…")}</p>}>
                     <SeasonView
                       strategies={result.strategies}
                       conditions={result.conditions}
@@ -898,7 +947,7 @@ export default function App() {
 
                 <section id="sec-space" className="result-section">
                   {observed ? (
-                    <Suspense fallback={<p className="hint">Loading the satellite replay…</p>}>
+                    <Suspense fallback={<p className="hint">{t("Loading the satellite replay…")}</p>}>
                       <SatelliteReplay
                         field={observed}
                         conditions={result.conditions}
@@ -908,16 +957,17 @@ export default function App() {
                     </Suspense>
                   ) : (
                     <div className="no-replay-card">
-                      <p className="kind">MODIS &amp; SMAP record</p>
-                      <h3>No prepared satellite replay for custom points</h3>
+                      <p className="kind">{t("MODIS & SMAP record")}</p>
+                      <h3>{t("No prepared satellite replay for custom points")}</h3>
                       <p className="hint">
-                        Full multi-year MODIS NDVI and SMAP soil-moisture replays are bundled for the three example
-                        fields. Custom coordinates use live 20-year NASA POWER climate and regional soil lookups above.
+                        {t(
+                          "Full multi-year MODIS NDVI and SMAP soil-moisture replays are bundled for the three example fields. Custom coordinates use live 20-year NASA POWER climate and regional soil lookups above.",
+                        )}
                       </p>
                       <div className="no-replay-actions">
                         {PRESETS.map((p) => (
                           <button key={p.label} type="button" className="secondary" onClick={() => choosePreset(p)}>
-                            Load {p.label}
+                            {t("Load {label}", { label: t(p.label) })}
                           </button>
                         ))}
                       </div>
@@ -938,9 +988,9 @@ export default function App() {
         </section>
       </div>
       <footer>
-        Data: NASA POWER (NASA Langley Research Center), USDA NRCS SSURGO, USDA NASS Cropland Data Layer, Agriculture
-        and Agri-Food Canada (Annual Crop Inventory, Soil Landscape Grids, under the Open Government Licence – Canada). Crop
-        values: FAO-56. Map © OpenStreetMap contributors.
+        {t(
+          "Data: NASA POWER (NASA Langley Research Center), USDA NRCS SSURGO, USDA NASS Cropland Data Layer, Agriculture and Agri-Food Canada (Annual Crop Inventory, Soil Landscape Grids, under the Open Government Licence – Canada). Crop values: FAO-56. Map © OpenStreetMap contributors.",
+        )}
       </footer>
     </div>
   );

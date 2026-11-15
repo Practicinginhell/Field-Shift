@@ -1,4 +1,5 @@
 import type { CropOption, RotationYear } from "./types";
+import { t } from "./i18n";
 
 interface Props {
   crops: CropOption[];
@@ -25,8 +26,8 @@ export default function RotationEditor({ crops, rotation, onChange }: Props) {
           <li key={i}>
             <label className="rotation-year-field">
               <span className="rotation-year-num">
-                Year {i + 1}
-                <span className="visually-hidden"> crop</span>
+                {t("Year {n}", { n: i + 1 })}
+                <span className="visually-hidden"> {t("crop")}</span>
               </span>
               <select
                 value={year.crop}
@@ -35,7 +36,7 @@ export default function RotationEditor({ crops, rotation, onChange }: Props) {
               >
                 {year.crop === "" && (
                   <option value="" disabled>
-                    Unknown: choose what you grew
+                    {t("Unknown: choose what you grew")}
                   </option>
                 )}
                 {crops.map((c) => (
@@ -52,16 +53,16 @@ export default function RotationEditor({ crops, rotation, onChange }: Props) {
                 disabled={!coverOk(year.crop)}
                 onChange={(e) => update(i, { cover: e.target.checked })}
               />
-              winter cover crop
+              {t("winter cover crop")}
             </label>
             {rotation.length > 1 && (
               <button
                 type="button"
                 className="link"
-                aria-label={`Remove year ${i + 1}`}
+                aria-label={t("Remove year {n}", { n: i + 1 })}
                 onClick={() => onChange(rotation.filter((_, j) => j !== i))}
               >
-                remove
+                {t("remove")}
               </button>
             )}
           </li>
@@ -69,13 +70,14 @@ export default function RotationEditor({ crops, rotation, onChange }: Props) {
       </ol>
       {rotation.some((y) => y.crop !== "" && !coverOk(y.crop)) && (
         <p className="hint">
-          Greyed-out cover crop: winter wheat and alfalfa already cover the soil over winter, and a fallow year is left
-          unplanted.
+          {t(
+            "Greyed-out cover crop: winter wheat and alfalfa already cover the soil over winter, and a fallow year is left unplanted.",
+          )}
         </p>
       )}
       {rotation.length < 8 && (
         <button type="button" className="secondary" onClick={() => onChange([...rotation, { crop: rotation[rotation.length - 1].crop, cover: false }])}>
-          Add a year
+          {t("Add a year")}
         </button>
       )}
     </div>

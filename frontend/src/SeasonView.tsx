@@ -4,6 +4,7 @@
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ACESFilmicToneMapping } from "three";
+import { getLang, num, t } from "./i18n";
 
 import FieldScene, { erosionRisk } from "./FieldScene";
 import {
@@ -27,7 +28,7 @@ import type { Conditions, Strategy } from "./types";
 
 const STEP_MS = 1100;
 
-const CAMERA_VIEWS: { mode: CameraView; label: string }[] = [
+export const CAMERA_VIEWS: { mode: CameraView; label: string }[] = [
   { mode: "overview", label: "Overview" },
   { mode: "roots", label: "Soil & roots" },
   { mode: "canopy", label: "Top-down canopy" },
@@ -102,20 +103,21 @@ export default function SeasonView({
     const frame = plotFrame(s, current);
     return { strategy: s, frame, total: tally(s, conditions, current), water: waterBalance(frame, weather) };
   });
-  const moments = useMemo(() => keyMoments(shown, conditions, steps), [shown, conditions, steps]);
+  const lang = getLang(); // the moments carry text: recompute when the language changes
+  const moments = useMemo(() => keyMoments(shown, conditions, steps), [shown, conditions, steps, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const momentInView = moments.filter((m) => m.step === current);
   const baselineTotal = plots[0].total;
   const highlightedIndex = highlightedStrategyId ? shown.findIndex((s) => s.id === highlightedStrategyId) : -1;
 
   const roleLabel = (index: number, isBaseline: boolean) =>
-    isBaseline ? "Your rotation" : shown.length > 2 ? `Option ${index}` : "Option";
+    isBaseline ? t("Your rotation") : shown.length > 2 ? t("Option {n}", { n: index }) : t("Option");
   const shortRoleKey = (index: number, isBaseline: boolean) =>
-    isBaseline ? "Yours" : shown.length > 2 ? `Opt ${index}` : "Opt";
+    isBaseline ? t("Yours") : shown.length > 2 ? t("Opt {n}", { n: index }) : t("Opt");
 
   const shortStageCrop = (frame: ReturnType<typeof plotFrame>) => {
-    if (frame.state === "bare" || !frame.crop) return "Bare";
-    if (frame.state === "planted") return "Sown";
-    if (frame.crop === "rye_cover") return "Rye cover";
+    if (frame.state === "bare" || !frame.crop) return t("Bare");
+    if (frame.state === "planted") return t("Sown");
+    if (frame.crop === "rye_cover") return t("Rye cover");
     const name = cropNames[frame.crop] ?? frame.crop.replaceAll("_", " ");
     return name.replace(" (grain)", "");
   };
@@ -128,16 +130,18 @@ export default function SeasonView({
   };
 
   return (
-    <section className="season" aria-label="Season view">
+    <section className="season" aria-label={t("Season view")}>
       <div className="season-head">
         <div>
-          <h2>Watch the seasons</h2>
+          <h2>{t("Watch the seasons")}</h2>
           <p className="hint">
-            All {shown.length} compared rotations side by side in your field's average weather ({conditions.period}),
-            month by month.
+            {t("All {n} compared rotations side by side in your field's average weather ({period}), month by month.", {
+              n: shown.length,
+              period: conditions.period,
+            })}
           </p>
         </div>
-        <div className="camera-views" role="group" aria-label="3D camera view">
+        <div className="camera-views" role="group" aria-label={t("3D camera view")}>
           {CAMERA_VIEWS.map(({ mode, label }) => {
             const active = cameraView === mode;
             return (
@@ -146,13 +150,13 @@ export default function SeasonView({
                 type="button"
                 className={active ? "secondary active" : "secondary"}
                 aria-pressed={active}
-                title={active ? "Click to reset zoom and camera angle" : undefined}
+                title={active ? t("Click to reset zoom and camera angle") : undefined}
                 onClick={() => {
                   setCameraView(mode);
                   setFitVersion((v) => v + 1);
                 }}
               >
-                {label}
+                {t(label)}
               </button>
             );
           })}
@@ -165,7 +169,7 @@ export default function SeasonView({
           dpr={[1, 1.5]}
           gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.06 }}
           camera={{ position: [0, 6.8, 11.8], fov: 45 }}
-          fallback={<p className="hint">The 3D view needs WebGL, which this browser does not offer.</p>}
+          fallback={<p className="hint">{t("The 3D view needs WebGL, which this browser does not offer.")}</p>}
         >
           <FieldScene
             frames={plots.map((p) => p.frame)}
@@ -193,18 +197,18 @@ export default function SeasonView({
               </span>
               {cameraView === "roots" && (
                 <span className="scene-tag">
-                  {roots.activeDepthM > 0 ? `Roots ${roots.activeDepthM.toFixed(1)} m` : "No living roots"}
+                  {roots.activeDepthM > 0 ? t("Roots {m} m", { m: num(Number(roots.activeDepthM.toFixed(1))) }) : t("No living roots")}
                 </span>
               )}
-              {erosionRisk(frame, weather) && <span className="scene-tag warn">Bare + heavy rain</span>}
+              {erosionRisk(frame, weather) && <span className="scene-tag warn">{t("Bare + heavy rain")}</span>}
             </div>
           );
         })}
       </div>
 
       {moments.length > 0 && (
-        <div className="key-moments" role="group" aria-label="Months worth a look">
-          <span className="key-moments-label">Jump to</span>
+        <div className="key-moments" role="group" aria-label={t("Months worth a look")}>
+          <span className="key-moments-label">{t("Jump to")}</span>
           {moments.map((m) => {
             const active = m.step === current;
             return (
@@ -217,7 +221,7 @@ export default function SeasonView({
               >
                 {m.label}{" "}
                 <span className="key-moment-when">
-                  {SHORT_MONTHS[m.step % 12]}, year {Math.floor(m.step / 12) + 1}
+                  {t("{month}, year {n}", { month: t(SHORT_MONTHS[m.step % 12]), n: Math.floor(m.step / 12) + 1 })}
                 </span>
               </button>
             );
@@ -230,15 +234,15 @@ export default function SeasonView({
         </div>
       )}
 
-      <div className="playback-bar" role="group" aria-label="Season playback controls">
+      <div className="playback-bar" role="group" aria-label={t("Season playback controls")}>
         <div className="step-buttons">
-          <button type="button" className="secondary" aria-label="Previous month" onClick={() => jumpTo(current - 1)}>
+          <button type="button" className="secondary" aria-label={t("Previous month")} onClick={() => jumpTo(current - 1)}>
             ‹
           </button>
           <button type="button" className="secondary active-play" aria-pressed={playing} onClick={() => setPlaying((p) => !p)}>
-            {playing ? "Pause" : "Play"}
+            {playing ? t("Pause") : t("Play")}
           </button>
-          <button type="button" className="secondary" aria-label="Next month" onClick={() => jumpTo(current + 1)}>
+          <button type="button" className="secondary" aria-label={t("Next month")} onClick={() => jumpTo(current + 1)}>
             ›
           </button>
         </div>
@@ -257,43 +261,48 @@ export default function SeasonView({
             min={0}
             max={steps - 1}
             value={current}
-            aria-label="Month"
+            aria-label={t("Month")}
             onChange={(e) => jumpTo(Number(e.target.value))}
           />
           <div className="scrubber-year-marks" aria-hidden="true">
             {Array.from({ length: years }, (_, yi) => (
-              <span key={yi}>Yr {yi + 1}</span>
+              <span key={yi}>{t("Yr {n}", { n: yi + 1 })}</span>
             ))}
           </div>
         </div>
 
         <div className="season-month-pill" aria-live="polite">
-          <strong>{MONTH_NAMES[weather.month]}</strong> · year {Math.floor(current / 12) + 1} of {years}
+          <strong>{t(MONTH_NAMES[weather.month])}</strong> ·{" "}
+          {t("year {n} of {total}", { n: Math.floor(current / 12) + 1, total: years })}
         </div>
       </div>
 
-      <div className="season-live-strip" aria-label="Live month status">
+      <div className="season-live-strip" aria-label={t("Live month status")}>
         <p className="weather-line">
-          <strong>Typical weather this month:</strong> rain {Math.round(weather.rainMm)} mm
-          {weather.frost && " · frost likely"}
-          {weather.heavyRainDays >= HEAVY_RAIN_MONTH && " · heavy rain likely"}
-          {weather.heatDays >= 0.5 && ` · about ${Math.round(weather.heatDays)} very hot ${Math.round(weather.heatDays) === 1 ? "day" : "days"}`}
+          <strong>{t("Typical weather this month:")}</strong> {t("rain {mm} mm", { mm: Math.round(weather.rainMm) })}
+          {weather.frost && t(" · frost likely")}
+          {weather.heavyRainDays >= HEAVY_RAIN_MONTH && t(" · heavy rain likely")}
+          {weather.heatDays >= 0.5 &&
+            (Math.round(weather.heatDays) === 1
+              ? t(" · about 1 very hot day")
+              : t(" · about {n} very hot days", { n: Math.round(weather.heatDays) }))}
         </p>
         <ul className="month-lines">
           {plots.map(({ strategy, frame }, i) => (
             <li key={strategy.id} className={strategy.id === highlightedStrategyId ? "is-highlighted" : undefined}>
               <span className="kind">{roleLabel(i, strategy.is_baseline)}</span>
               <span>{describe(frame, cropNames)}</span>
-              {erosionRisk(frame, weather) && <span className="delta warn">bare soil in a heavy-rain month</span>}
+              {erosionRisk(frame, weather) && <span className="delta warn">{t("bare soil in a heavy-rain month")}</span>}
             </li>
           ))}
         </ul>
         <details className="month-figures">
-          <summary>Figures for this month</summary>
+          <summary>{t("Figures for this month")}</summary>
           <p className="hint">
-            Rain {Math.round(weather.rainMm)} mm · evaporative demand {Math.round(weather.et0Mm)} mm
-            {weather.heavyRainDays >= HEAVY_RAIN_MONTH && ` · heavy rain on ${weather.heavyRainDays.toFixed(1)} days`}
-            {weather.heatDays >= 0.5 && ` · ${weather.heatDays.toFixed(1)} days at 35 °C or more`}
+            {t("Rain {rain} mm · evaporative demand {et0} mm", { rain: Math.round(weather.rainMm), et0: Math.round(weather.et0Mm) })}
+            {weather.heavyRainDays >= HEAVY_RAIN_MONTH &&
+              t(" · heavy rain on {n} days", { n: num(Number(weather.heavyRainDays.toFixed(1))) })}
+            {weather.heatDays >= 0.5 && t(" · {n} days at 35 °C or more", { n: num(Number(weather.heatDays.toFixed(1))) })}
           </p>
           <div className="live-strip-grid" data-count={plots.length}>
           {plots.map(({ strategy, frame, total, water }, i) => {
@@ -317,39 +326,39 @@ export default function SeasonView({
                   <strong className="live-name">{strategy.name}</strong>
                 </div>
                 <p className="live-stage">
-                  Year {frame.rotationYear}: {describe(frame, cropNames)}
+                  {t("Year {n}: {state}", { n: frame.rotationYear, state: describe(frame, cropNames) })}
                 </p>
                 <dl className="live-metrics">
                   <div className="wide">
-                    <dt>Rain − crop water use, this month</dt>
+                    <dt>{t("Rain − crop water use, this month")}</dt>
                     <dd>
                       {water.rainMm} − {water.useMm} = {signedMm(water.balanceMm)}
                     </dd>
                   </div>
                   <div>
-                    <dt>Roots (FAO-56)</dt>
+                    <dt>{t("Roots (FAO-56)")}</dt>
                     <dd>
                       {roots.activeDepthM > 0
-                        ? `${roots.activeDepthM.toFixed(1)} m (${roots.architecture}${roots.nitrogenFixing ? " · fixes N" : ""})`
-                        : "0 m (no living roots)"}
+                        ? `${num(Number(roots.activeDepthM.toFixed(1)))} m (${t(roots.architecture)}${roots.nitrogenFixing ? t(" · fixes N") : ""})`
+                        : t("0 m (no living roots)")}
                     </dd>
                   </div>
                   <div>
-                    <dt>Water so far</dt>
+                    <dt>{t("Water so far")}</dt>
                     <dd>
                       {total.waterMm} mm
                       {diff && <DeltaBadge diff={diff.waterDiffMm} unit=" mm" />}
                     </dd>
                   </div>
                   <div>
-                    <dt>Bare months</dt>
+                    <dt>{t("Bare months")}</dt>
                     <dd>
                       {total.bareMonths}
                       {diff && <DeltaBadge diff={diff.bareMonthsDiff} />}
                     </dd>
                   </div>
                   <div className={total.soilAtRisk > 0 ? "risk" : undefined}>
-                    <dt>In heavy rain</dt>
+                    <dt>{t("In heavy rain")}</dt>
                     <dd>
                       {total.soilAtRisk}
                       {diff && <DeltaBadge diff={diff.soilAtRiskDiff} />}
@@ -365,13 +374,14 @@ export default function SeasonView({
 
       <div className="season-timeline">
         <div className="timeline-legend">
-          <span><i className="swatch state-crop" aria-hidden="true" /> Living crop</span>
-          <span><i className="swatch state-cover" aria-hidden="true" /> Cover crop</span>
-          <span><i className="swatch state-planted" aria-hidden="true" /> Newly sown</span>
-          <span><i className="swatch state-bare" aria-hidden="true" /> Bare soil</span>
-          <span><i className="rain-dot" aria-hidden="true" /> Heavy-rain month (≥ 20 mm/day)</span>
+          <span><i className="swatch state-crop" aria-hidden="true" /> {t("Living crop")}</span>
+          <span><i className="swatch state-cover" aria-hidden="true" /> {t("Cover crop")}</span>
+          <span><i className="swatch state-planted" aria-hidden="true" /> {t("Newly sown")}</span>
+          <span><i className="swatch state-bare" aria-hidden="true" /> {t("Bare soil")}</span>
+          <span><i className="rain-dot" aria-hidden="true" /> {t("Heavy-rain month (≥ 20 mm/day)")}</span>
           <span className="timeline-row-guide">
-            <strong>Rows:</strong> Top = Your rotation{shown.length > 1 ? " · Options below" : ""}
+            <strong>{t("Rows:")}</strong> {t("Top = Your rotation")}
+            {shown.length > 1 ? t(" · Options below") : ""}
           </span>
         </div>
         <div className="timeline-years">
@@ -380,8 +390,8 @@ export default function SeasonView({
             return (
               <div key={yearIdx} className={isActiveYear ? "timeline-year active-year" : "timeline-year"}>
                 <div className="timeline-year-head">
-                  <span className="timeline-year-label">Year {yearIdx + 1}</span>
-                  {isActiveYear && <span className="timeline-year-now">Viewing now</span>}
+                  <span className="timeline-year-label">{t("Year {n}", { n: yearIdx + 1 })}</span>
+                  {isActiveYear && <span className="timeline-year-now">{t("Viewing now")}</span>}
                   <span className="timeline-year-crops visually-hidden">
                     {shown
                       .map((s, i) => `${shortRoleKey(i, s.is_baseline)}: ${yearCropLabel(s, yearIdx, cropNames)}`)
@@ -390,7 +400,7 @@ export default function SeasonView({
                 </div>
                 <div className="timeline-months">
                   <div className="timeline-row-keys" aria-hidden="true">
-                    <span className="timeline-row-key timeline-row-key-mo">Mo</span>
+                    <span className="timeline-row-key timeline-row-key-mo">{t("Mo")}</span>
                     {shown.map((s, i) => {
                       const label = yearCropLabel(s, yearIdx, cropNames);
                       const isRowHighlighted = s.id === highlightedStrategyId;
@@ -418,7 +428,8 @@ export default function SeasonView({
                     const heavy = conditions.monthly_heavy_rain_days[monthIdx] >= HEAVY_RAIN_MONTH;
                     const active = s === current;
                     const tooltip = [
-                      `Year ${yearIdx + 1}, ${MONTH_NAMES[monthIdx]}${heavy ? " (heavy-rain month)" : ""}`,
+                      t("Year {n}, {month}", { n: yearIdx + 1, month: t(MONTH_NAMES[monthIdx]) }) +
+                        (heavy ? t(" (heavy-rain month)") : ""),
                       ...shown.map(
                         (st, idx) => `${shortRoleKey(idx, st.is_baseline)}: ${describe(cellFrames[idx], cropNames)}`,
                       ),
@@ -428,20 +439,20 @@ export default function SeasonView({
                         key={s}
                         type="button"
                         className={active ? "timeline-cell active" : "timeline-cell"}
-                        aria-label={`Year ${yearIdx + 1}, ${MONTH_NAMES[monthIdx]}`}
+                        aria-label={t("Year {n}, {month}", { n: yearIdx + 1, month: t(MONTH_NAMES[monthIdx]) })}
                         aria-current={active ? "step" : undefined}
                         title={tooltip}
                         onClick={() => jumpTo(s)}
                       >
                         <span className="timeline-month-letter">
                           {mLabel[0]}
-                          {heavy && <span className="rain-dot" title="Heavy-rain month" />}
+                          {heavy && <span className="rain-dot" title={t("Heavy-rain month")} />}
                         </span>
                         {shown.map((st, idx) => (
                           <span
                             key={st.id}
                             className={`timeline-bar state-${cellFrames[idx].state}`}
-                            title={`${roleLabel(idx, st.is_baseline)}: ${cellFrames[idx].state}`}
+                            title={`${roleLabel(idx, st.is_baseline)}: ${t(cellFrames[idx].state)}`}
                           />
                         ))}
                       </button>
@@ -455,18 +466,23 @@ export default function SeasonView({
       </div>
 
       <p className="hint">
-        A typical year from {conditions.period} weather, not a forecast. Crop stages follow typical calendars, not
-        satellite observations of this field.
+        {t(
+          "A typical year from {period} weather, not a forecast. Crop stages follow typical calendars, not satellite observations of this field.",
+          { period: conditions.period },
+        )}
         {cameraView === "roots" &&
-          ` In this view the soil is drawn ${ROOTS_SOIL_EXAGGERATION}× deeper than true scale so roots can be read. The lines mark 0.5, 1.0 and 1.5 m.`}
+          t(
+            " In this view the soil is drawn {x}× deeper than true scale so roots can be read. The lines mark 0.5, 1.0 and 1.5 m.",
+            { x: ROOTS_SOIL_EXAGGERATION },
+          )}
       </p>
       <details className="about-picture">
-        <summary>About this picture</summary>
+        <summary>{t("About this picture")}</summary>
         <p className="hint">
-          Weather is the {conditions.period} monthly average from NASA POWER. Newly sown months count as bare: there is
-          little cover yet. Darker soil means the month's rain exceeds the crop's water use. It is not measured soil
-          moisture. The striped pole is 2 m tall and crops are drawn at typical mature heights. The sun stands at its
-          midday height for this latitude and month. The trees are scenery, not this field's surroundings.
+          {t(
+            "Weather is the {period} monthly average from NASA POWER. Newly sown months count as bare: there is little cover yet. Darker soil means the month's rain exceeds the crop's water use. It is not measured soil moisture. The striped pole is 2 m tall and crops are drawn at typical mature heights. The sun stands at its midday height for this latitude and month. The trees are scenery, not this field's surroundings.",
+            { period: conditions.period },
+          )}
         </p>
       </details>
     </section>

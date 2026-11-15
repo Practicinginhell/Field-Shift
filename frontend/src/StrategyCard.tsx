@@ -1,8 +1,9 @@
 import { CRITERION_NAMES } from "./PrioritySliders";
 import ScoreBar from "./ScoreBar";
 import type { Criterion, Strategy } from "./types";
+import { num, t } from "./i18n";
 
-const SUPPORT_LABEL = {
+export const SUPPORT_LABEL = {
   "field-level": "your field",
   regional: "wider area",
   "general reference": "general reference",
@@ -49,8 +50,8 @@ export function splitSharedLocalReview(strategies: Strategy[]): {
 }
 
 /** General good practice for any rotation change; it does not come from the field's data. */
-const TRIAL_STEP =
-  "Try it on one field or part of a field first, and compare it with your usual rotation before changing more.";
+const TRIAL_STEP = () =>
+  t("Try it on one field or part of a field first, and compare it with your usual rotation before changing more.");
 
 interface Props {
   strategy: Strategy;
@@ -64,6 +65,8 @@ interface Props {
   /** Crops new to the farmer's rotation; only the farmer knows if they can grow and sell them. */
   cropQuestions?: { key: string; name: string; confirmed: boolean }[];
   onCropAnswer?: (key: string, canGrow: boolean) => void;
+  /** Crop names in the page's language, by key. */
+  cropNames?: Record<string, string>;
 }
 
 export default function StrategyCard({
@@ -77,7 +80,10 @@ export default function StrategyCard({
   onSelectFor3D,
   cropQuestions = [],
   onCropAnswer,
+  cropNames,
 }: Props) {
+  const cropName = (key: string) =>
+    cropNames?.[key]?.replace(" (grain)", "").toLowerCase() ?? key.replaceAll("_", " ");
   const s = strategy;
   const checks = localChecks ?? s.local_review;
   const isDetail = variant === "detail";
@@ -85,13 +91,13 @@ export default function StrategyCard({
   const changeSteps = isDetail && !s.is_baseline;
   const kindLabel = isDetail
     ? s.is_baseline
-      ? "Details · Current rotation"
+      ? t("Details · Current rotation")
       : optionPrefix
-        ? `Details · ${optionPrefix}`
-        : "Details · Option"
+        ? t("Details · {option}", { option: optionPrefix })
+        : t("Details · Option")
     : s.is_baseline
-      ? "Your current rotation"
-      : "Option to explore";
+      ? t("Your current rotation")
+      : t("Option to explore");
   const titleText = isDetail && optionPrefix && !s.is_baseline ? `${optionPrefix} · ${s.name}` : s.name;
 
   return (
@@ -106,24 +112,24 @@ export default function StrategyCard({
               aria-pressed={Boolean(isComparedIn3D)}
               onClick={() => onSelectFor3D(s.id)}
             >
-              {isComparedIn3D ? "Showing in 3D" : "Compare in 3D"}
+              {isComparedIn3D ? t("Showing in 3D") : t("Compare in 3D")}
             </button>
           ) : (
-            !s.is_baseline && optionIndex !== undefined && <span className="card-opt-badge">Opt {optionIndex}</span>
+            !s.is_baseline && optionIndex !== undefined && <span className="card-opt-badge">{t("Opt {n}", { n: optionIndex })}</span>
           )}
         </div>
         <h3>{titleText}</h3>
-        <div className="rotation-pills" aria-label="Rotation sequence">
+        <div className="rotation-pills" aria-label={t("Rotation sequence")}>
           {s.years.map((y, i) => (
             <span key={i} className={y.cover ? "pill cover" : "pill"}>
-              Yr {i + 1}: {y.crop.replaceAll("_", " ")}
-              {y.cover ? " + cover" : ""}
+              {t("Yr {n}: {crop}", { n: i + 1, crop: cropName(y.crop) })}
+              {y.cover ? t(" + cover") : ""}
             </span>
           ))}
         </div>
         {!isDetail && (
           <p className="total">
-            Fit with your priorities: <strong>{Math.round(s.total * 100)}</strong> / 100
+            {t("Fit with your priorities:")} <strong>{Math.round(s.total * 100)}</strong> / 100
           </p>
         )}
       </header>
@@ -141,10 +147,10 @@ export default function StrategyCard({
         <dl className="scores">
           {(Object.keys(CRITERION_NAMES) as Criterion[]).map((c) => (
             <div key={c}>
-              <dt>{CRITERION_NAMES[c]}</dt>
+              <dt>{t(CRITERION_NAMES[c])}</dt>
               <dd>
                 <ScoreBar
-                  label={CRITERION_NAMES[c]}
+                  label={t(CRITERION_NAMES[c])}
                   score={s.scores[c]}
                   baselineScore={!s.is_baseline && baselineScores ? baselineScores[c] : undefined}
                   showDelta={!s.is_baseline && Boolean(baselineScores)}
@@ -157,19 +163,22 @@ export default function StrategyCard({
 
       {!isDetail && (
         <p className="facts">
-          Water use about {s.water_demand_mm} mm a year · living cover about {s.cover_months} months a year
-          {s.rainfed_shortfall_mm > 0 && ` · rain falls short by about ${s.rainfed_shortfall_mm} mm`}
+          {t("Water use about {mm} mm a year · living cover about {months} months a year", {
+            mm: s.water_demand_mm,
+            months: num(s.cover_months),
+          })}
+          {s.rainfed_shortfall_mm > 0 && t(" · rain falls short by about {mm} mm", { mm: s.rainfed_shortfall_mm })}
         </p>
       )}
 
       <section>
-        <h4>Why it was suggested</h4>
+        <h4>{t("Why it was suggested")}</h4>
         {s.why.map((t) => (
           <p key={t}>{t}</p>
         ))}
       </section>
       <section>
-        <h4>Possible benefits</h4>
+        <h4>{t("Possible benefits")}</h4>
         <ul>
           {s.benefits.map((t) => (
             <li key={t}>{t}</li>
@@ -178,30 +187,30 @@ export default function StrategyCard({
       </section>
       {onCropAnswer && cropQuestions.length > 0 && (
         <section className="farmer-questions">
-          <h4>Only you know</h4>
+          <h4>{t("Only you know")}</h4>
           <ul>
             {cropQuestions.map((q) =>
               q.confirmed ? (
-                <li key={q.key}>✓ You can grow and sell {q.name}.</li>
+                <li key={q.key}>✓ {t("You can grow and sell {crop}.", { crop: q.name })}</li>
               ) : (
                 <li key={q.key}>
-                  <span>Can you grow and sell {q.name} here: a buyer or your own use, and the equipment?</span>
+                  <span>{t("Can you grow and sell {crop} here: a buyer or your own use, and the equipment?", { crop: q.name })}</span>
                   <span className="answer-buttons">
                     <button
                       type="button"
                       className="secondary"
-                      aria-label={`Yes, I can grow and sell ${q.name}`}
+                      aria-label={t("Yes, I can grow and sell {crop}", { crop: q.name })}
                       onClick={() => onCropAnswer(q.key, true)}
                     >
-                      Yes
+                      {t("Yes")}
                     </button>
                     <button
                       type="button"
                       className="secondary"
-                      aria-label={`No, rule out ${q.name}`}
+                      aria-label={t("No, rule out {crop}", { crop: q.name })}
                       onClick={() => onCropAnswer(q.key, false)}
                     >
-                      No, rule it out
+                      {t("No, rule it out")}
                     </button>
                   </span>
                 </li>
@@ -212,20 +221,20 @@ export default function StrategyCard({
       )}
       {changeSteps ? (
         <section className="review">
-          <h4 id={`steps-${s.id}`}>Before you change anything</h4>
+          <h4 id={`steps-${s.id}`}>{t("Before you change anything")}</h4>
           <ol aria-labelledby={`steps-${s.id}`}>
-            {[...checks, TRIAL_STEP].map((t) => (
-              <li key={t}>{t}</li>
+            {[...checks, TRIAL_STEP()].map((line) => (
+              <li key={line}>{line}</li>
             ))}
           </ol>
           <button type="button" className="secondary print-button" onClick={() => window.print()}>
-            Print for my advisor
+            {t("Print for my advisor")}
           </button>
         </section>
       ) : (
         checks.length > 0 && (
           <section className="review">
-            <h4>{isDetail ? "Check locally for this option" : "Check locally"}</h4>
+            <h4>{isDetail ? t("Check locally for this option") : t("Check locally")}</h4>
             <ul>
               {checks.map((t) => (
                 <li key={t}>{t}</li>
@@ -235,11 +244,11 @@ export default function StrategyCard({
         )
       )}
       <details>
-        <summary>Evidence ({s.evidence.length})</summary>
+        <summary>{t("Evidence ({n})", { n: s.evidence.length })}</summary>
         <ul className="evidence">
           {s.evidence.map((e) => (
             <li key={e.variable}>
-              <strong>{e.variable}:</strong> {e.value}
+              <strong>{t("{label}:", { label: e.variable })}</strong> {e.value}
               {e.url ? (
                 <a
                   className={`source ${SUPPORT_CLASS[e.support]}`}
@@ -247,12 +256,12 @@ export default function StrategyCard({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {e.dataset}, {e.period} · {SUPPORT_LABEL[e.support]}
+                  {e.dataset}, {e.period} · {t(SUPPORT_LABEL[e.support])}
                   <span aria-hidden="true"> ↗</span>
                 </a>
               ) : (
                 <span className={`source ${SUPPORT_CLASS[e.support]}`}>
-                  {e.dataset}, {e.period} · {SUPPORT_LABEL[e.support]}
+                  {e.dataset}, {e.period} · {t(SUPPORT_LABEL[e.support])}
                 </span>
               )}
             </li>
@@ -260,7 +269,7 @@ export default function StrategyCard({
         </ul>
       </details>
       <details>
-        <summary>What we don't know ({s.gaps.length})</summary>
+        <summary>{t("What we don't know ({n})", { n: s.gaps.length })}</summary>
         <ul>
           {s.gaps.map((t) => (
             <li key={t}>{t}</li>

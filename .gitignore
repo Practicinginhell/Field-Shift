@@ -35,3 +35,6 @@ Thumbs.db
 
 # Large media: hosted outside the repo
 *.mp4
+
+# Vercel CLI link (local)
+.vercel/

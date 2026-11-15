@@ -3,6 +3,7 @@
 // yields and their buyer's price.
 
 import { useState } from "react";
+import { t } from "./i18n";
 
 import type { TypedNumbers } from "./margin";
 import type { CropNumbers, Economics } from "./types";
@@ -21,9 +22,10 @@ type Row = { yield_per_acre: string; price: string; cost_per_acre: string };
 const text = (v: number | null) => (v === null ? "" : String(v));
 
 const UNIT_WORDS: Record<string, string> = { bu: "bu", t: "tonne", ton: "ton" };
+const unitWord = (u: string) => t(UNIT_WORDS[u] ?? u);
 
 export default function YourNumbers({ economics, onChange }: Props) {
-  const symbol = economics.currency === "CAD" ? "C$" : "$";
+  const symbol = economics.currency === "CAD" ? t("C$") : "$";
   const [rows, setRows] = useState<Record<string, Row>>(() =>
     Object.fromEntries(
       economics.crops.map((c) => [
@@ -68,27 +70,27 @@ export default function YourNumbers({ economics, onChange }: Props) {
 
   return (
     <details id="control-numbers" tabIndex={-1} className="your-numbers">
-      <summary>Your yields and prices</summary>
+      <summary>{t("Your yields and prices")}</summary>
       <div className="your-numbers-body">
         <p className="hint">
           {economics.region
-            ? `Filled in from the ${economics.region} budget. Type your own numbers over them.`
-            : "There is no current published budget here. Enter your own numbers for each crop."}{" "}
+            ? t("Filled in from the {region} budget. Type your own numbers over them.", { region: economics.region })
+            : t("There is no current published budget here. Enter your own numbers for each crop.")}{" "}
           {economics.basis}
         </p>
         <div className="table-wrap">
           <table className="your-numbers-table">
             <thead>
               <tr>
-                <th scope="col">Crop</th>
-                <th scope="col">Yield per acre</th>
-                <th scope="col">Price</th>
-                <th scope="col">Cost per acre</th>
+                <th scope="col">{t("Crop")}</th>
+                <th scope="col">{t("Yield per acre")}</th>
+                <th scope="col">{t("Price")}</th>
+                <th scope="col">{t("Cost per acre")}</th>
               </tr>
             </thead>
             <tbody>
               {economics.crops.map((c) => {
-                const unit = UNIT_WORDS[c.unit] ?? c.unit;
+                const unit = unitWord(c.unit);
                 return (
                   <tr key={c.crop}>
                     <th scope="row">{c.name}</th>
@@ -98,7 +100,7 @@ export default function YourNumbers({ economics, onChange }: Props) {
                         min="0"
                         step="any"
                         inputMode="decimal"
-                        aria-label={`${c.name} yield, ${unit} per acre`}
+                        aria-label={t("{crop} yield, {unit} per acre", { crop: c.name, unit })}
                         value={rows[c.crop].yield_per_acre}
                         onChange={(e) => set(c.crop, "yield_per_acre", e.target.value)}
                       />{" "}
@@ -111,7 +113,7 @@ export default function YourNumbers({ economics, onChange }: Props) {
                         min="0"
                         step="any"
                         inputMode="decimal"
-                        aria-label={`${c.name} price, ${symbol} per ${unit}`}
+                        aria-label={t("{crop} price, {symbol} per {unit}", { crop: c.name, symbol, unit })}
                         value={rows[c.crop].price}
                         onChange={(e) => set(c.crop, "price", e.target.value)}
                       />{" "}
@@ -124,7 +126,7 @@ export default function YourNumbers({ economics, onChange }: Props) {
                         min="0"
                         step="any"
                         inputMode="decimal"
-                        aria-label={`${c.name} cost, ${symbol} per acre`}
+                        aria-label={t("{crop} cost, {symbol} per acre", { crop: c.name, symbol })}
                         value={rows[c.crop].cost_per_acre}
                         onChange={(e) => set(c.crop, "cost_per_acre", e.target.value)}
                       />
@@ -133,9 +135,9 @@ export default function YourNumbers({ economics, onChange }: Props) {
                 );
               })}
               <tr>
-                <th scope="row">Winter rye cover</th>
+                <th scope="row">{t("Winter rye cover")}</th>
                 <td colSpan={2} className="muted">
-                  Seed, seeding and ending it in spring
+                  {t("Seed, seeding and ending it in spring")}
                 </td>
                 <td>
                   {symbol}
@@ -144,7 +146,7 @@ export default function YourNumbers({ economics, onChange }: Props) {
                     min="0"
                     step="any"
                     inputMode="decimal"
-                    aria-label={`Winter rye cover cost, ${symbol} per acre`}
+                    aria-label={t("Winter rye cover cost, {symbol} per acre", { symbol })}
                     value={cover}
                     onChange={(e) => setCoverText(e.target.value)}
                   />
@@ -153,10 +155,10 @@ export default function YourNumbers({ economics, onChange }: Props) {
             </tbody>
           </table>
         </div>
-        <p className="hint">The margins above and below update as you type.</p>
+        <p className="hint">{t("The margins above and below update as you type.")}</p>
         {economics.sources.length > 0 && (
           <details className="your-numbers-sources">
-            <summary>Where these numbers come from</summary>
+            <summary>{t("Where these numbers come from")}</summary>
             <ul>
               {economics.sources.map((s) => (
                 <li key={s}>{s}</li>

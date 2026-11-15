@@ -1,0 +1,5 @@
+# Runtime packages for the API on Vercel (api/index.py). Local development installs
+# backend/pyproject.toml instead; keep the versions in step.
+fastapi==0.162.7
+httpx2==2.16.0
+pyproj==3.8.0

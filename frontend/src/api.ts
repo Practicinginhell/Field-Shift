@@ -22,8 +22,11 @@ async function getJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchCrops(): Promise<CropOption[]> {
-  return getJson(await fetch("/api/crops"));
+/** "&lang=fr" for French; nothing for English, so English URLs stay as they were. */
+const langParam = (lang: string) => (lang === "fr" ? "lang=fr" : "");
+
+export async function fetchCrops(lang = "en"): Promise<CropOption[]> {
+  return getJson(await fetch(lang === "fr" ? `/api/crops?${langParam(lang)}` : "/api/crops"));
 }
 
 export async function analyze(request: {
@@ -35,6 +38,8 @@ export async function analyze(request: {
   excluded_crops: string[];
   own_numbers?: Record<string, CropNumbers>;
   own_cover_cost?: number | null;
+  /** The language of every sentence in the answer. */
+  language?: "en" | "fr";
 }): Promise<AnalyzeResponse> {
   return getJson(
     await fetch("/api/analyze", {
@@ -45,14 +50,16 @@ export async function analyze(request: {
   );
 }
 
-export async function fetchCropHistory(latitude: number, longitude: number): Promise<CropHistory> {
+export async function fetchCropHistory(latitude: number, longitude: number, lang = "en"): Promise<CropHistory> {
   const params = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude) });
+  if (lang === "fr") params.set("lang", "fr");
   return getJson(await fetch(`/api/crop-history?${params}`));
 }
 
 /** The prepared satellite record of an example field, or `null` for any other field. */
-export async function fetchObserved(latitude: number, longitude: number): Promise<ObservedField | null> {
+export async function fetchObserved(latitude: number, longitude: number, lang = "en"): Promise<ObservedField | null> {
   const params = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude) });
+  if (lang === "fr") params.set("lang", "fr");
   const response = await fetch(`/api/observed?${params}`);
   if (response.status === 404) return null;
   return getJson(response);

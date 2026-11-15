@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { setLang } from "./i18n";
 import App from "./App";
 import { ALTERNATIVE, BASELINE, CROPS, RESPONSE } from "./testData";
 
@@ -25,6 +26,8 @@ vi.mock("./SatelliteReplay", () => ({ default: () => <div>satellite replay</div>
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
+  setLang("en");
 });
 
 const OTTAWA_HISTORY = {
@@ -38,7 +41,7 @@ const OTTAWA_HISTORY = {
 
 function stubApi(analyze: () => Promise<Response>, history: unknown = OTTAWA_HISTORY, observed: unknown = null) {
   const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
-    if (url === "/api/crops") return Promise.resolve(new Response(JSON.stringify(CROPS)));
+    if (url === "/api/crops" || url === "/api/crops?lang=fr") return Promise.resolve(new Response(JSON.stringify(CROPS)));
     if (url === "/api/analyze") return analyze();
     if (url.startsWith("/api/crop-history")) return Promise.resolve(new Response(JSON.stringify(history)));
     if (url.startsWith("/api/observed")) {
@@ -219,6 +222,28 @@ test("calls the soil's erodibility by its name, with the slope", async () => {
   expect(screen.getByText("Soil erodibility")).toBeTruthy();
   expect(screen.getByText("moderate (slope 1%)")).toBeTruthy();
   expect(screen.queryByText("Erosion risk")).toBeNull();
+});
+
+test("switches the whole page to French, asks the API in French, and remembers it", async () => {
+  const fetchMock = stubApi(() => Promise.resolve(new Response(JSON.stringify(RESPONSE))));
+  render(<App />);
+  await screen.findByRole("button", { name: "Compare rotations" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Français" }));
+
+  expect(screen.getByRole("heading", { name: "1. Votre champ" })).toBeTruthy();
+  expect(document.documentElement.lang).toBe("fr");
+  expect(localStorage.getItem("field-shift-lang")).toBe("fr");
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/crops?lang=fr"));
+
+  fireEvent.click(screen.getByRole("button", { name: "Comparer les rotations" }));
+  await screen.findAllByText("Votre rotation actuelle");
+  const call = fetchMock.mock.calls.find(([url]) => url === "/api/analyze");
+  expect(JSON.parse(String(call?.[1]?.body)).language).toBe("fr");
+  expect(screen.getByText("Notre suggestion pour votre champ")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "English" }));
+  expect(screen.getByRole("heading", { name: "1. Your field" })).toBeTruthy();
 });
 
 test("shows the satellite replay only when the field has a prepared record", async () => {

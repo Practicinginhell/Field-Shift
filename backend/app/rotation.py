@@ -454,7 +454,7 @@ def _gaps(site: Site) -> list[str]:
         "observations of this field.",
         "Crop water use uses general crop coefficients (FAO-56). Local varieties and "
         "planting dates change it.",
-        "No local price data yet, so income uses a general market class.",
+        "Market suitability uses a general market class, not your local buyers.",
         "Weather comes from a NASA POWER grid cell about 50 km across. Your field's own "
         "microclimate can differ.",
     ]

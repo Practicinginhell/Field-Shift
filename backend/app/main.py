@@ -4,11 +4,12 @@ import logging
 import os
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 import httpx2
 from fastapi import FastAPI, HTTPException, Query
 
-from app import __version__
+from app import __version__, i18n
 from app.climate import summarize
 from app.crops import ACI_TO_CROP, CDL_TO_CROP, CROPS
 from app.economics import add_margins, budget_for
@@ -41,10 +42,12 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/crops")
-def crops() -> list[CropOption]:
-    """Crops the rotation editor offers."""
+def crops(lang: Literal["en", "fr"] = "en") -> list[CropOption]:
+    """Crops the rotation editor offers, named in English or French (`lang`)."""
+    name = i18n.crop_fr if lang == "fr" else (lambda n: n)
     return [
-        CropOption(key=c.key, name=c.name, cover_crop_ok=c.cover_crop_ok) for c in CROPS.values()
+        CropOption(key=c.key, name=name(c.name), cover_crop_ok=c.cover_crop_ok)
+        for c in CROPS.values()
     ]
 
 
@@ -101,6 +104,8 @@ def analyze_field(request: AnalyzeRequest) -> AnalyzeResponse:
         baseline.evidence.extend(evidence)
         baseline.local_review.extend(review)
     add_margins(result, request, budget_for(request.latitude, request.longitude, us_soil))
+    if request.language == "fr":
+        i18n.translate_response(result)
     return result
 
 
@@ -108,6 +113,7 @@ def analyze_field(request: AnalyzeRequest) -> AnalyzeResponse:
 def observed(
     latitude: float = Query(ge=-90, le=90),
     longitude: float = Query(ge=-180, le=180),
+    lang: Literal["en", "fr"] = "en",
 ) -> ObservedField:
     """What NASA satellites saw on the field, 2019–2024: monthly greenness and state,
     season dates, soil moisture and stress flags. Prepared offline for the example
@@ -119,6 +125,9 @@ def observed(
             "Satellite replay is prepared for the example fields only. This field shows "
             "typical crop calendars.",
         )
+    if lang == "fr":
+        field = field.model_copy(deep=True)  # the prepared record is shared: never edit it
+        i18n.translate_observed(field)
     return field
 
 
@@ -126,6 +135,7 @@ def observed(
 def crop_history(
     latitude: float = Query(ge=-90, le=90),
     longitude: float = Query(ge=-180, le=180),
+    lang: Literal["en", "fr"] = "en",
 ) -> CropHistory:
     """Past crops at a point, newest year last: Canada first, then the U.S.
 
@@ -147,7 +157,7 @@ def crop_history(
                 )
                 for r in canada
             ],
-            source="AAFC Annual Crop Inventory (Agriculture and Agri-Food Canada)",
+            source=_source("AAFC Annual Crop Inventory (Agriculture and Agri-Food Canada)", lang),
         )
 
     last = this_year - 2  # CDL for a year is published early the year after next
@@ -161,4 +171,10 @@ def crop_history(
                 crop=CDL_TO_CROP.get(result.category or ""),
             )
         )
-    return CropHistory(years=years, source="USDA NASS Cropland Data Layer (CropScape)")
+    return CropHistory(
+        years=years, source=_source("USDA NASS Cropland Data Layer (CropScape)", lang)
+    )
+
+
+def _source(name: str, lang: str) -> str:
+    return i18n.CROP_HISTORY_SOURCE_FR[name] if lang == "fr" else name

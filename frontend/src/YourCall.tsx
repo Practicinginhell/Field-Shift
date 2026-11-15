@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { t } from "./i18n";
 
 export type FarmerControl = "priorities" | "water" | "crops" | "numbers";
 
@@ -52,38 +53,39 @@ export default function YourCall({ goals, irrigated, ruledOut, numbersSource, on
   const items: { control: FarmerControl; label: string; value: string; action: string }[] = [
     {
       control: "priorities",
-      label: "What matters most:",
+      label: t("What matters most:"),
       value: goals,
-      action: "Change what matters most",
+      action: t("Change what matters most"),
     },
     {
       control: "water",
-      label: "Your water:",
-      value: irrigated ? "Irrigated" : "Rainfed",
-      action: "Change your water",
+      label: t("Your water:"),
+      value: irrigated ? t("Irrigated") : t("Rainfed"),
+      action: t("Change your water"),
     },
     {
       control: "crops",
-      label: "Crops you can't grow or sell:",
-      value: ruledOut.length ? `Ruled out: ${ruledOut.join(", ")}` : "No crops ruled out",
-      action: "Rule out crops you can't grow or sell",
+      label: t("Crops you can't grow or sell:"),
+      value: ruledOut.length ? t("Ruled out: {crops}", { crops: ruledOut.join(", ") }) : t("No crops ruled out"),
+      action: t("Rule out crops you can't grow or sell"),
     },
   ];
   if (numbersSource !== undefined) {
     items.push({
       control: "numbers",
-      label: "Yields and prices:",
+      label: t("Yields and prices:"),
       value: numbersSource,
-      action: "Enter your yields and prices",
+      action: t("Enter your yields and prices"),
     });
   }
 
   return (
     <section className="your-call" aria-labelledby="your-call-title">
-      <h3 id="your-call-title">Your call</h3>
+      <h3 id="your-call-title">{t("Your call")}</h3>
       <p className="hint">
-        These options come from NASA data and general crop facts. You know things the data doesn't. Change any of
-        these and the comparison updates.
+        {t(
+          "These options come from NASA data and general crop facts. You know things the data doesn't. Change any of these and the comparison updates.",
+        )}
       </p>
       <ul className="your-call-grid">
         {items.map((item) => (
@@ -99,7 +101,7 @@ export default function YourCall({ goals, irrigated, ruledOut, numbersSource, on
           </li>
         ))}
       </ul>
-      <p className="hint">Then take the option you like to your extension advisor or agronomist.</p>
+      <p className="hint">{t("Then take the option you like to your extension advisor or agronomist.")}</p>
     </section>
   );
 }
