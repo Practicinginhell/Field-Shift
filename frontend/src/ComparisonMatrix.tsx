@@ -15,6 +15,7 @@ interface Props {
   highlightedId: string | null;
   onSelectStrategy: (id: string) => void;
   onToggleSecond?: (id: string) => void;
+  irrigated?: boolean;
 }
 
 function formatDelta(diff: number): string {
@@ -29,6 +30,7 @@ export default function ComparisonMatrix({
   highlightedId,
   onSelectStrategy,
   onToggleSecond,
+  irrigated,
 }: Props) {
   const orderedStrategies = [...strategies].sort((a, b) => Number(b.is_baseline) - Number(a.is_baseline));
   const baseline = orderedStrategies.find((s) => s.is_baseline) ?? orderedStrategies[0];
@@ -115,7 +117,11 @@ export default function ComparisonMatrix({
                     <strong className="matrix-name">{s.name}</strong>
                     <div className="matrix-meta">
                       {s.water_demand_mm} mm/yr · {s.cover_months} mo cover
-                      {s.rainfed_shortfall_mm > 0 ? ` · −${s.rainfed_shortfall_mm} mm shortfall` : ""}
+                      {s.rainfed_shortfall_mm > 0
+                        ? irrigated
+                          ? ` · ${s.rainfed_shortfall_mm} mm irrigation`
+                          : ` · −${s.rainfed_shortfall_mm} mm shortfall`
+                        : ""}
                     </div>
                   </th>
                   <td

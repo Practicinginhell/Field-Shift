@@ -51,6 +51,43 @@ export interface Strategy {
   cover_months: number;
   warnings: string[];
   calendar: MonthState[][];
+  margin?: Margin | null;
+}
+
+/** Gross margin of a rotation, per acre a year (yield x price - costs, before land). */
+export interface Margin {
+  per_acre: number | null;
+  vs_current: number | null;
+  /** Crops without numbers, by name. */
+  missing: string[];
+}
+
+/** One crop's yield, price and cost per acre. */
+export interface CropNumbers {
+  yield_per_acre: number;
+  price: number;
+  cost_per_acre: number;
+}
+
+export interface CropLine {
+  crop: string;
+  name: string;
+  /** "bu", "t" (tonne) or "ton" (short ton). */
+  unit: string;
+  yield_per_acre: number | null;
+  price: number | null;
+  cost_per_acre: number | null;
+  own: boolean;
+}
+
+export interface Economics {
+  /** The published budget used, or null: the farmer enters numbers. */
+  region: string | null;
+  currency: string | null;
+  basis: string;
+  cover_crop_cost: number | null;
+  crops: CropLine[];
+  sources: string[];
 }
 
 export interface Soil {
@@ -87,6 +124,7 @@ export interface AnalyzeResponse {
   removed: { name: string; reason: string }[];
   weights: Priorities;
   notes: string[];
+  economics?: Economics | null;
 }
 
 export interface CropHistory {

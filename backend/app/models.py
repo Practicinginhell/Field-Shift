@@ -29,6 +29,16 @@ class Priorities(BaseModel):
     income: int = Field(3, ge=0, le=5)
 
 
+class CropNumbers(BaseModel):
+    """One crop's numbers per acre, from a published budget or the farmer."""
+
+    yield_per_acre: float = Field(ge=0, le=100_000)
+    """In the crop's unit (bushels, tonnes or tons per acre)."""
+    price: float = Field(ge=0, le=100_000)
+    """Per unit of yield."""
+    cost_per_acre: float = Field(ge=0, le=100_000)
+
+
 class AnalyzeRequest(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -37,6 +47,10 @@ class AnalyzeRequest(BaseModel):
     priorities: Priorities = Priorities()
     excluded_crops: list[str] = Field(default_factory=list, max_length=20)
     """Crops the farmer can't grow or sell here (no buyer, no equipment)."""
+    own_numbers: dict[str, CropNumbers] = Field(default_factory=dict, max_length=20)
+    """The farmer's own yield, price and cost for a crop, by crop key."""
+    own_cover_cost: float | None = Field(None, ge=0, le=10_000)
+    """The farmer's own cost of a winter rye cover crop, per acre."""
 
 
 class Evidence(BaseModel):
@@ -87,6 +101,46 @@ class Strategy(BaseModel):
     """Hard-limit problems. Only the baseline can carry these; others are removed."""
     calendar: list[list[MonthState]] = []
     """One list of 12 calendar months (Jan..Dec) per rotation year, in order."""
+    margin: "Margin | None" = None
+
+
+class Margin(BaseModel):
+    """Gross margin of a rotation: yield x price - costs, averaged over its years."""
+
+    per_acre: float | None
+    """Per acre a year, rounded; None when a crop (or the cover crop) has no numbers."""
+    vs_current: float | None
+    """Difference from the farmer's current rotation, per acre a year."""
+    missing: list[str] = []
+    """Crops without numbers, by name; "Winter rye cover" when its cost is missing."""
+
+
+class CropLine(BaseModel):
+    """The numbers used for one crop, so the farmer can see and replace them."""
+
+    crop: str
+    name: str
+    unit: str
+    """Yield unit: "bu", "t" (tonne) or "ton" (short ton)."""
+    yield_per_acre: float | None
+    price: float | None
+    cost_per_acre: float | None
+    own: bool = False
+    """True when these are the farmer's own numbers."""
+
+
+class Economics(BaseModel):
+    """Where the margin numbers come from and what they include."""
+
+    region: str | None
+    """The published budget used ("Iowa", "Ontario"), or None: the farmer enters numbers."""
+    currency: str | None
+    """"USD" or "CAD"; None when there is no regional budget."""
+    basis: str
+    """What the costs include and leave out."""
+    cover_crop_cost: float | None
+    crops: list[CropLine]
+    sources: list[str]
 
 
 class RemovedStrategy(BaseModel):
@@ -139,6 +193,7 @@ class AnalyzeResponse(BaseModel):
     removed: list[RemovedStrategy]
     weights: dict[Criterion, int]
     notes: list[str]
+    economics: Economics | None = None
 
 
 class CropOption(BaseModel):

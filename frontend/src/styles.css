@@ -3450,7 +3450,7 @@ footer {
   margin: var(--space-3) 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: var(--space-3);
 }
 
@@ -3558,4 +3558,181 @@ button.secondary.your-call-btn .your-call-icon {
 .farmer-questions .answer-buttons {
   display: flex;
   gap: var(--space-2);
+}
+
+/* Gross margin: one line per rotation, and the farmer's own numbers. */
+.rotation-margin {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rotation-margin.is-missing {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.your-numbers {
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+}
+
+.your-numbers > summary {
+  cursor: pointer;
+  padding: var(--space-3);
+  font-weight: 600;
+}
+
+.your-numbers-body {
+  padding: 0 var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+}
+
+.your-numbers-body .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.your-numbers-table {
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.your-numbers-table th,
+.your-numbers-table td {
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.your-numbers-table input {
+  width: 6.5rem;
+  margin-left: 0.2rem;
+}
+
+.your-numbers-table .muted {
+  color: var(--muted);
+}
+
+.your-numbers-sources {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.your-numbers-sources ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.your-numbers-body .primary {
+  width: auto;
+  min-width: 12rem;
+}
+
+@media (max-width: 640px) {
+  .your-numbers-table input {
+    width: 4.5rem;
+  }
+}
+
+/* Farmer-first layout: the suggestion first, the technical detail folded. */
+.sub-heading {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.answer-card {
+  border: 2px solid var(--accent, #1b6538);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  padding: var(--space-4, 1.25rem);
+  display: grid;
+  gap: var(--space-2, 0.6rem);
+  justify-items: start;
+}
+
+.answer-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.answer-card .kind {
+  margin: 0;
+}
+
+.answer-why {
+  margin: 0;
+  color: var(--muted);
+}
+
+.answer-facts {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-weight: 600;
+}
+
+.answer-block h3 {
+  margin: var(--space-2, 0.6rem) 0 0.2rem;
+  font-size: 0.95rem;
+}
+
+.answer-block p,
+.answer-block ul {
+  margin: 0;
+}
+
+.answer-block ul {
+  padding-left: 1.1rem;
+}
+
+.answer-reminder {
+  margin: var(--space-2, 0.6rem) 0 0;
+  font-weight: 600;
+  color: var(--accent, #1b6538);
+}
+
+.more-detail > summary {
+  cursor: pointer;
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+}
+
+.more-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-detail > summary .more-title::before {
+  content: "▸ ";
+}
+
+.more-detail[open] > summary .more-title::before {
+  content: "▾ ";
+}
+
+.more-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.more-sub {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.more-detail > .result-section {
+  margin-top: var(--space-4, 1.25rem);
 }

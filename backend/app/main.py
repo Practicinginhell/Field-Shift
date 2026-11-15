@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from app import __version__
 from app.climate import summarize
 from app.crops import ACI_TO_CROP, CDL_TO_CROP, CROPS
+from app.economics import add_margins, budget_for
 from app.envfile import load_env_file
 from app.models import (
     AnalyzeRequest,
@@ -74,6 +75,7 @@ def analyze_field(request: AnalyzeRequest) -> AnalyzeResponse:
     except (httpx2.HTTPError, ValueError) as exc:  # optional source: degrade and say so
         log.warning("SSURGO lookup failed: %s", exc)
         soil, ssurgo_failed = None, True
+    us_soil = soil is not None
     if soil is None:
         try:
             soil = aafc.fetch_soil(request.latitude, request.longitude)
@@ -98,6 +100,7 @@ def analyze_field(request: AnalyzeRequest) -> AnalyzeResponse:
         baseline = result.strategies[0]
         baseline.evidence.extend(evidence)
         baseline.local_review.extend(review)
+    add_margins(result, request, budget_for(request.latitude, request.longitude, us_soil))
     return result
 
 

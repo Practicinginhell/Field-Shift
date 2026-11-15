@@ -4,6 +4,28 @@
 import { orderedCriteriaByWeight } from "./ComparisonMatrix";
 import type { Criterion, Priorities, Strategy } from "./types";
 
+/** "$" for U.S. dollars and when the farmer's own numbers have no stated currency, "C$" for Canadian. */
+export function money(amount: number, currency?: string | null): string {
+  const sign = amount < 0 ? "-" : "";
+  const symbol = currency === "CAD" ? "C$" : "$";
+  return `${sign}${symbol}${Math.abs(Math.round(amount)).toLocaleString("en-US")}`;
+}
+
+/** The margin line for one rotation, in plain words. */
+export function marginText(s: Strategy, currency?: string | null): string | null {
+  const m = s.margin;
+  if (!m) return null;
+  if (m.per_acre === null) return `Needs your numbers for: ${m.missing.join(", ")}, to show a gross margin.`;
+  let text = `Gross margin about ${money(m.per_acre, currency)} an acre a year`;
+  if (!s.is_baseline && m.vs_current !== null) {
+    text +=
+      m.vs_current === 0
+        ? " · about the same as yours"
+        : ` · ${money(Math.abs(m.vs_current), currency)} ${m.vs_current < 0 ? "less" : "more"} than yours`;
+  }
+  return text;
+}
+
 /** A score has to move at least this many points (of 100) before we call it better or worse. */
 export const NOTICEABLE_POINTS = 5;
 
@@ -40,11 +62,15 @@ export function compareInWords(
 interface Props {
   strategies: Strategy[];
   weights: Priorities;
+  /** "USD", "CAD", or none when the margins use the farmer's own numbers. */
+  currency?: string | null;
+  /** On an irrigated field the gap between rain and crop use is irrigation water. */
+  irrigated?: boolean;
   selectedId: string | null;
   onSelectStrategy: (id: string) => void;
 }
 
-export default function RotationList({ strategies, weights, selectedId, onSelectStrategy }: Props) {
+export default function RotationList({ strategies, weights, currency, irrigated, selectedId, onSelectStrategy }: Props) {
   const ordered = [...strategies].sort((a, b) => Number(b.is_baseline) - Number(a.is_baseline));
   const baseline = ordered.find((s) => s.is_baseline) ?? ordered[0];
   let optionNumber = 0;
@@ -56,6 +82,7 @@ export default function RotationList({ strategies, weights, selectedId, onSelect
         const kind = s.is_baseline ? "Your current rotation" : "Option to explore";
         const words = s.is_baseline ? null : compareInWords(s, baseline, weights);
         const selected = selectedId === s.id;
+        const margin = marginText(s, currency);
         return (
           <li
             key={s.id}
@@ -73,8 +100,14 @@ export default function RotationList({ strategies, weights, selectedId, onSelect
               <p className="rotation-facts">
                 Uses about {s.water_demand_mm} mm of water a year · soil covered by living plants about{" "}
                 {s.cover_months} months a year
-                {s.rainfed_shortfall_mm > 0 && ` · rain falls about ${s.rainfed_shortfall_mm} mm short`}
+                {s.rainfed_shortfall_mm > 0 &&
+                  (irrigated
+                    ? ` · needs about ${s.rainfed_shortfall_mm} mm of irrigation a year`
+                    : ` · rain falls about ${s.rainfed_shortfall_mm} mm short`)}
               </p>
+              {margin && (
+                <p className={s.margin?.per_acre === null ? "rotation-margin is-missing" : "rotation-margin"}>{margin}</p>
+              )}
               {s.warnings.map((w) => (
                 <p key={w} className="rotation-warning">
                   {w}

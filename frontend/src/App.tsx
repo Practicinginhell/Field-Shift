@@ -9,10 +9,15 @@ import RotationEditor from "./RotationEditor";
 import RotationList from "./RotationList";
 import StrategyCard, { splitSharedLocalReview } from "./StrategyCard";
 import YourCall, { type FarmerControl } from "./YourCall";
+import YourNumbers from "./YourNumbers";
+import AnswerCard from "./AnswerCard";
+import { applyMargins, liveNumbers, type TypedNumbers } from "./margin";
 import type {
   AnalyzeResponse,
   Criterion,
+  CropNumbers,
   CropOption,
+  Economics,
   ObservedField,
   Priorities,
   RotationYear,
@@ -73,6 +78,13 @@ export function formatPlace(latitude: number, longitude: number): string {
   return `${Math.abs(latitude).toFixed(2)}° ${ns}, ${Math.abs(longitude).toFixed(2)}° ${ew}`;
 }
 
+/** Where the margin numbers come from, for the "Your call" box. */
+function numbersSource(e: Economics, own: number): string {
+  const yours = own ? `your own for ${own} crop${own > 1 ? "s" : ""}` : "";
+  if (e.region) return `${e.region} 2026 budget${yours ? `, ${yours}` : ""}`;
+  return yours ? yours[0].toUpperCase() + yours.slice(1) : "No local budget: enter your own";
+}
+
 function summarizeGoals(priorities: Priorities): string {
   const ranked = (Object.entries(priorities) as [Criterion, number][])
     .filter(([, v]) => v > 0)
@@ -87,13 +99,12 @@ function summarizeGoals(priorities: Priorities): string {
 const DEFAULT_PRIORITIES: Priorities = { water: 3, soil: 3, nitrogen: 2, erosion: 3, pests: 2, forage: 1, income: 3 };
 
 type ThemeMode = "auto" | "light" | "dark";
-type ResultSectionId = "sec-conditions" | "sec-compare" | "sec-seasons" | "sec-space";
+type ResultSectionId = "sec-answer" | "sec-compare" | "sec-more";
 
 const SECTION_LINKS: { id: ResultSectionId; label: string }[] = [
-  { id: "sec-conditions", label: "Conditions" },
+  { id: "sec-answer", label: "Suggestion" },
   { id: "sec-compare", label: "Compare" },
-  { id: "sec-seasons", label: "Seasons" },
-  { id: "sec-space", label: "From space" },
+  { id: "sec-more", label: "More detail" },
 ];
 
 export default function App() {
@@ -105,6 +116,11 @@ export default function App() {
   const [irrigated, setIrrigated] = useState(PRESETS[0].irrigated);
   const [priorities, setPriorities] = useState<Priorities>(DEFAULT_PRIORITIES);
   const [excludedCrops, setExcludedCrops] = useState<string[]>([]);
+  // The farmer's own yields, prices and costs; empty means the regional budget's.
+  const [ownNumbers, setOwnNumbers] = useState<Record<string, CropNumbers>>({});
+  const [ownCoverCost, setOwnCoverCost] = useState<number | null>(null);
+  // What the farmer is typing in the numbers table; null shows the table as it came.
+  const [typedNumbers, setTypedNumbers] = useState<TypedNumbers | null>(null);
   // Crops the farmer said they can grow and sell, so their question is not asked again.
   const [confirmedCrops, setConfirmedCrops] = useState<string[]>([]);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -116,10 +132,11 @@ export default function App() {
   const [editingInputs, setEditingInputs] = useState(true);
   const [selectedDetailIds, setSelectedDetailIds] = useState<string[]>([]);
   const [highlightedStrategyId, setHighlightedStrategyId] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<ResultSectionId>("sec-conditions");
+  const [activeSection, setActiveSection] = useState<ResultSectionId>("sec-answer");
   const [theme, setTheme] = useState<ThemeMode>("auto");
   const [error, setError] = useState<string | null>(null);
   const inputsRef = useRef<HTMLElement | null>(null);
+  const moreRef = useRef<HTMLDetailsElement | null>(null);
   const prevEditingRef = useRef(editingInputs);
 
   useEffect(() => {
@@ -192,6 +209,9 @@ export default function App() {
     setHistoryLoading(false);
     setLatitude(p.latitude);
     setLongitude(p.longitude);
+    setOwnNumbers({}); // another farm: its own numbers, and maybe another currency
+    setTypedNumbers(null);
+    setOwnCoverCost(null);
     setRotation(p.rotation);
     setIrrigated(p.irrigated);
     setResult(null);
@@ -210,6 +230,9 @@ export default function App() {
     setBusy(false);
     setLatitude(latitude);
     setLongitude(longitude);
+    setOwnNumbers({});
+    setTypedNumbers(null);
+    setOwnCoverCost(null);
     setResult(null);
     setObserved(null);
     setDirty(false);
@@ -258,7 +281,11 @@ export default function App() {
     }
   };
 
-  const run = async (excluded: string[] = excludedCrops) => {
+  const run = async (
+    excluded: string[] = excludedCrops,
+    own: Record<string, CropNumbers> = ownNumbers,
+    coverCost: number | null = ownCoverCost,
+  ) => {
     if (rotationIncomplete) return;
     // A field change while this runs makes the answer stale: only the latest request
     // may show its results.
@@ -277,13 +304,16 @@ export default function App() {
         irrigated,
         priorities,
         excluded_crops: excluded,
+        own_numbers: own,
+        own_cover_cost: coverCost,
       });
       if (!stillWanted()) return;
       const firstAlternative = res.strategies.find((s) => !s.is_baseline) ?? res.strategies[0];
       setResult(res);
+      setTypedNumbers(null); // the new answer carries the farmer's numbers in its table
       setSelectedDetailIds(firstAlternative ? [firstAlternative.id] : []);
       setHighlightedStrategyId(firstAlternative?.id ?? null);
-      setActiveSection("sec-conditions");
+      setActiveSection("sec-answer");
       setEditingInputs(false);
       setActiveSeasonMonth(null);
       setChartMonthRequest(null);
@@ -323,7 +353,22 @@ export default function App() {
     run(next);
   };
 
+  // Margins don't change the scores, so typed numbers update them here, with no reload.
+  const typeNumbers = (typed: TypedNumbers, own: Record<string, CropNumbers>, coverCost: number | null) => {
+    setTypedNumbers(typed);
+    setOwnNumbers(own);
+    setOwnCoverCost(coverCost);
+  };
+
   const openControl = (control: FarmerControl) => {
+    if (control === "numbers") {
+      // The numbers table sits in the results, next to the comparison it changes.
+      const el = document.getElementById("control-numbers");
+      if (el instanceof HTMLDetailsElement) el.open = true;
+      el?.scrollIntoView?.({ block: "start" });
+      el?.focus({ preventScroll: true });
+      return;
+    }
     setEditingInputs(true);
     // After the inputs re-open (and their own scroll), go to the one control.
     window.setTimeout(() => {
@@ -342,6 +387,24 @@ export default function App() {
       : [...new Set(s.years.map((y) => y.crop))]
           .filter((key) => key !== "fallow" && !rotation.some((y) => y.crop === key))
           .map((key) => ({ key, name: cropNames[key] ?? key.replaceAll("_", " "), confirmed: confirmedCrops.includes(key) }));
+
+  // The suggestion's crops the farmer doesn't grow today: only they know the buyer and equipment.
+  const topAlternative = result?.strategies.find((s) => !s.is_baseline);
+  const topNewCrops = topAlternative ? cropQuestions(topAlternative).map((q) => q.name) : [];
+
+  const seeWhy = (id: string) => {
+    selectDetailStrategy(id);
+    window.setTimeout(() => document.getElementById("detail-panels")?.scrollIntoView?.({ block: "start" }), 0);
+  };
+
+  // The rotations as shown: margins from the numbers table, with the farmer's typing.
+  const shownStrategies = useMemo(() => {
+    if (!result?.economics) return result?.strategies ?? [];
+    const names = { ...cropNames, ...Object.fromEntries(result.economics.crops.map((c) => [c.crop, c.name])) };
+    const live = liveNumbers(result.economics, typedNumbers);
+    return applyMargins(result.strategies, live.numbers, live.coverCost, names);
+  }, [result, typedNumbers, cropNames]);
+  const shownBaseline = shownStrategies.find((s) => s.is_baseline) ?? shownStrategies[0];
 
   const showCollapsedInputs = Boolean(result) && !editingInputs;
   const baselineStrategy = result?.strategies.find((s) => s.is_baseline) ?? result?.strategies[0];
@@ -439,7 +502,7 @@ export default function App() {
             then read its past crops.
           </p>
 
-          <h2 className="step-heading">2. Your current rotation</h2>
+          <h2 className="step-heading">2. What you grow</h2>
           {crops.length > 0 && <RotationEditor crops={crops} rotation={rotation} onChange={editRotation} />}
           <button
             type="button"
@@ -454,6 +517,19 @@ export default function App() {
               {historyNote}
             </p>
           )}
+
+          <h2 className="step-heading">3. Your farm</h2>
+          <h3 id="control-priorities" tabIndex={-1} className="sub-heading">
+            What matters most to you
+          </h3>
+          <PrioritySliders
+            priorities={priorities}
+            onChange={(next) => {
+              setPriorities(next);
+              setDirty(true);
+            }}
+          />
+          <h3 className="sub-heading">Your water and your limits</h3>
           <label id="control-water" tabIndex={-1} className={irrigated ? "check toggle-card is-active" : "check toggle-card"}>
             <input
               type="checkbox"
@@ -465,17 +541,6 @@ export default function App() {
             />
             <span className="toggle-card-label">This field is irrigated</span>
           </label>
-
-          <h2 id="control-priorities" tabIndex={-1} className="step-heading">
-            3. What matters most to you
-          </h2>
-          <PrioritySliders
-            priorities={priorities}
-            onChange={(next) => {
-              setPriorities(next);
-              setDirty(true);
-            }}
-          />
           <details id="control-crops" tabIndex={-1} className="excluded">
             <summary>
               <span className="excluded-icon" aria-hidden="true">
@@ -573,12 +638,12 @@ export default function App() {
                   <span>Choose one of the three example fields or click your own field on the map.</span>
                 </li>
                 <li>
-                  <strong>2. Set current rotation &amp; irrigation</strong>
+                  <strong>2. What you grow</strong>
                   <span>Enter the crops you grow, year by year, or fill them in from past crop maps.</span>
                 </li>
                 <li>
-                  <strong>3. Weight your priorities</strong>
-                  <span>Say how much water, soil, erosion, pests, livestock feed and markets matter to you.</span>
+                  <strong>3. Tell us about your farm</strong>
+                  <span>What matters most, your water, and crops you can't grow or sell.</span>
                 </li>
               </ol>
               <div className="intro-preview" aria-label="What your comparison includes">
@@ -648,7 +713,10 @@ export default function App() {
                       key={sec.id}
                       href={`#${sec.id}`}
                       className={activeSection === sec.id ? "nav-pill active" : "nav-pill"}
-                      onClick={() => setActiveSection(sec.id)}
+                      onClick={() => {
+                        if (sec.id === "sec-more" && moreRef.current) moreRef.current.open = true;
+                        setActiveSection(sec.id);
+                      }}
                     >
                       {sec.label}
                     </a>
@@ -666,48 +734,22 @@ export default function App() {
               </div>
 
               <div className="results-stack">
-                <section id="sec-conditions" className="result-section">
-                  <h2>Your field's conditions ({result.conditions.period})</h2>
-                  <div className="conditions-kpis">
-                    <div className="kpi">
-                      <span className="kpi-label">Rain a year</span>
-                      <strong className="kpi-value">{result.conditions.annual_precip_mm} mm</strong>
-                    </div>
-                    <div className="kpi">
-                      <span className="kpi-label">Frost-free season</span>
-                      <strong className="kpi-value">{result.conditions.frost_free_days} days</strong>
-                    </div>
-                    <div className="kpi">
-                      <span className="kpi-label">Soil</span>
-                      <strong className="kpi-value">{result.conditions.soil?.component ?? "No soil map here"}</strong>
-                    </div>
-                    {result.conditions.erosion_susceptibility !== "unknown" && (
-                      <div className="kpi">
-                        <span className="kpi-label">Erosion risk</span>
-                        <strong className="kpi-value">{result.conditions.erosion_susceptibility}</strong>
-                      </div>
-                    )}
-                  </div>
-                  <div className="conditions">
-                    <ul>
-                      {result.conditions.summary.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                    <MonthlyWaterChart
-                      rain={result.conditions.monthly_precip_mm}
-                      et0={result.conditions.monthly_et0_mm}
-                      selectedMonth={activeSeasonMonth}
-                      onSelectMonth={(m) => {
-                        setActiveSeasonMonth(m);
-                        setChartMonthRequest((prev) => ({ month: m, seq: (prev?.seq ?? 0) + 1 }));
-                      }}
+                <section id="sec-answer" className="result-section">
+                  {shownBaseline && (
+                    <AnswerCard
+                      baseline={shownBaseline}
+                      top={shownStrategies.find((x) => !x.is_baseline)}
+                      firstStep={shownStrategies.find((x) => x.id === "current-plus-cover")}
+                      currency={result.economics?.currency}
+                      newCrops={topNewCrops}
+                      checks={topAlternative ? (uniqueChecks.get(topAlternative.id) ?? []) : []}
+                      onSeeWhy={seeWhy}
                     />
-                  </div>
+                  )}
                 </section>
 
                 <section id="sec-compare" className="result-section">
-                  <h2>Rotations compared</h2>
+                  <h2>All options side by side</h2>
                   <p className="hint">
                     Compared with your current rotation, on the goals you rated. These are options to explore, not
                     recommendations.
@@ -716,11 +758,15 @@ export default function App() {
                     goals={summarizeGoals(priorities)}
                     irrigated={irrigated}
                     ruledOut={excludedCrops.map((k) => cropNames[k] ?? k)}
+                    numbersSource={result.economics ? numbersSource(result.economics, Object.keys(ownNumbers).length) : undefined}
                     onOpen={openControl}
                   />
+                  {result.economics && <YourNumbers economics={result.economics} onChange={typeNumbers} />}
                   <RotationList
-                    strategies={result.strategies}
+                    strategies={shownStrategies}
                     weights={result.weights}
+                    currency={result.economics?.currency}
+                    irrigated={irrigated}
                     selectedId={selectedStrategies[0]?.id ?? null}
                     onSelectStrategy={selectDetailStrategy}
                   />
@@ -733,10 +779,11 @@ export default function App() {
                       highlightedId={highlightedStrategyId}
                       onSelectStrategy={selectDetailStrategy}
                       onToggleSecond={toggleSecondDetail}
+                      irrigated={irrigated}
                     />
                   </details>
 
-                  <div className="detail-panels" data-count={selectedStrategies.length}>
+                  <div id="detail-panels" className="detail-panels" data-count={selectedStrategies.length}>
                     {selectedStrategies.map((s) => (
                       <StrategyCard
                         key={s.id}
@@ -776,6 +823,62 @@ export default function App() {
                       </ul>
                     </details>
                   )}
+                </section>
+
+                <details
+                  id="sec-more"
+                  ref={moreRef}
+                  className="result-section more-detail"
+                >
+                  <summary>
+                    <span className="more-title">More detail for you and your advisor</span>
+                    <span className="more-sub">
+                      Your field's weather and soil, every option through the seasons in 3D, and what satellites saw
+                      on the field.
+                    </span>
+                  </summary>
+                <section id="sec-conditions" className="result-section">
+                  <h2>Your field's conditions ({result.conditions.period})</h2>
+                  <div className="conditions-kpis">
+                    <div className="kpi">
+                      <span className="kpi-label">Rain a year</span>
+                      <strong className="kpi-value">{result.conditions.annual_precip_mm} mm</strong>
+                    </div>
+                    <div className="kpi">
+                      <span className="kpi-label">Frost-free season</span>
+                      <strong className="kpi-value">{result.conditions.frost_free_days} days</strong>
+                    </div>
+                    <div className="kpi">
+                      <span className="kpi-label">Soil</span>
+                      <strong className="kpi-value">{result.conditions.soil?.component ?? "No soil map here"}</strong>
+                    </div>
+                    {result.conditions.erosion_susceptibility !== "unknown" && (
+                      <div className="kpi">
+                        <span className="kpi-label">Soil erodibility</span>
+                        <strong className="kpi-value">
+                          {result.conditions.erosion_susceptibility}
+                          {result.conditions.soil?.slope_percent != null &&
+                            ` (slope ${result.conditions.soil.slope_percent}%)`}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+                  <div className="conditions">
+                    <ul>
+                      {result.conditions.summary.map((t) => (
+                        <li key={t}>{t}</li>
+                      ))}
+                    </ul>
+                    <MonthlyWaterChart
+                      rain={result.conditions.monthly_precip_mm}
+                      et0={result.conditions.monthly_et0_mm}
+                      selectedMonth={activeSeasonMonth}
+                      onSelectMonth={(m) => {
+                        setActiveSeasonMonth(m);
+                        setChartMonthRequest((prev) => ({ month: m, seq: (prev?.seq ?? 0) + 1 }));
+                      }}
+                    />
+                  </div>
                 </section>
 
                 <section id="sec-seasons" className="result-section">
@@ -821,6 +924,8 @@ export default function App() {
                     </div>
                   )}
                 </section>
+
+                </details>
 
                 <div className="notes">
                   {result.notes.map((n) => (

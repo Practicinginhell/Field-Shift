@@ -174,6 +174,53 @@ test("sends the crops the farmer can't grow or sell with the analysis", async ()
   expect(JSON.parse(String(call?.[1]?.body)).excluded_crops).toEqual(["canola"]);
 });
 
+test("updates the margins as the farmer types, and sends their numbers next time", async () => {
+  const withEconomics = {
+    ...RESPONSE,
+    economics: {
+      region: "Iowa",
+      currency: "USD",
+      basis: "Costs are the budget's variable costs.",
+      cover_crop_cost: 41.55,
+      crops: [
+        { crop: "corn", name: "Corn (grain)", unit: "bu", yield_per_acre: 211, price: 4.6, cost_per_acre: 483.6, own: false },
+        { crop: "soybean", name: "Soybean", unit: "bu", yield_per_acre: 61, price: 12.1, cost_per_acre: 290.21, own: false },
+      ],
+      sources: ["Iowa State University budget"],
+    },
+  };
+  const fetchMock = stubApi(() => Promise.resolve(new Response(JSON.stringify(withEconomics))));
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Compare rotations" }));
+  await screen.findAllByText("Your current rotation");
+  expect(screen.getAllByText(/Gross margin about \$467 an acre a year/).length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole("button", { name: "Enter your yields and prices" }));
+  fireEvent.change(screen.getByLabelText("Corn (grain) price, $ per bu"), { target: { value: "5.6" } });
+
+  // corn 211 bu x $5.60 - $483.60 = $698.00; soybean $447.89: mean $572.95, no reload
+  expect(screen.getAllByText(/Gross margin about \$573 an acre a year/).length).toBeGreaterThan(0);
+  expect(fetchMock.mock.calls.filter(([url]) => url === "/api/analyze")).toHaveLength(1);
+
+  fireEvent.change(screen.getByLabelText("Save water"), { target: { value: "5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Update comparison" }));
+  await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/analyze")).toHaveLength(2));
+  const calls = fetchMock.mock.calls.filter(([url]) => url === "/api/analyze");
+  expect(JSON.parse(String(calls[1][1]?.body)).own_numbers).toEqual({
+    corn: { yield_per_acre: 211, price: 5.6, cost_per_acre: 483.6 },
+  });
+});
+
+test("calls the soil's erodibility by its name, with the slope", async () => {
+  stubApi(() => Promise.resolve(new Response(JSON.stringify(RESPONSE))));
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Compare rotations" }));
+  await screen.findAllByText("Your current rotation");
+  expect(screen.getByText("Soil erodibility")).toBeTruthy();
+  expect(screen.getByText("moderate (slope 1%)")).toBeTruthy();
+  expect(screen.queryByText("Erosion risk")).toBeNull();
+});
+
 test("shows the satellite replay only when the field has a prepared record", async () => {
   const observed = { id: "iowa", latitude: 42.38, longitude: -93.75, years: [], clear_view_share: 0.5, sources: [], methods: [] };
   stubApi(() => Promise.resolve(new Response(JSON.stringify(RESPONSE))), OTTAWA_HISTORY, observed);

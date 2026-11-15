@@ -1,4 +1,12 @@
-import type { AnalyzeResponse, CropHistory, CropOption, ObservedField, Priorities, RotationYear } from "./types";
+import type {
+  AnalyzeResponse,
+  CropHistory,
+  CropNumbers,
+  CropOption,
+  ObservedField,
+  Priorities,
+  RotationYear,
+} from "./types";
 
 async function getJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -25,6 +33,8 @@ export async function analyze(request: {
   irrigated: boolean;
   priorities: Priorities;
   excluded_crops: string[];
+  own_numbers?: Record<string, CropNumbers>;
+  own_cover_cost?: number | null;
 }): Promise<AnalyzeResponse> {
   return getJson(
     await fetch("/api/analyze", {

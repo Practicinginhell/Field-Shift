@@ -59,6 +59,12 @@ conda create -n nasa-challenge python=3.14
 5. **Scores:** water use, soil health, erosion protection, pest-cycle breaks and
    income, each from 0 to 100, weighted by your priorities. Crop water use is the
    crop's FAO-56 coefficient times the field's own monthly evapotranspiration.
+6. **Gross margin:** for each rotation, yield × price minus costs, per acre a year,
+   minus the cost of a winter rye cover crop in the years that have one. Iowa and
+   Ontario fields use the current published crop budgets and prices; elsewhere, or for
+   a crop the budget doesn't cover, the farmer enters their own yield, price and cost,
+   which always replace the budget. Costs leave out land, so this compares rotations on
+   the same field; it is not a profit forecast.
 
 The tool suggests options to explore. It does not decide: every option lists what to
 check with a local advisor.
@@ -77,6 +83,10 @@ check with a local advisor.
 | Google TimesFM 2.5 (google/timesfm-2.5-200m-pytorch) | Offline: expected range for each month, to flag unusual months | Apache-2.0. Das, A. et al., "A decoder-only foundation model for time-series forecasting", ICML 2024. |
 | Saxton & Rawls (2006) | Water-holding capacity from texture (Canada) | Saxton, K.E., Rawls, W.J. (2006). Soil water characteristic estimates by texture and organic matter for hydrologic solutions. Soil Science Society of America Journal 70: 1569–1578. |
 | FAO Irrigation and Drainage Paper 56 | Crop water-use coefficients and root depths | Allen, R.G., Pereira, L.S., Raes, D., Smith, M. (1998). Crop evapotranspiration. FAO Irrigation and Drainage Paper 56. FAO, Rome. |
+| Iowa State University Ag Decision Maker A1-20 (2026) and 2026 Iowa Farm Custom Rate Survey (A3-10) | Gross margin, Iowa: yields and variable costs (corn, soybeans, alfalfa); cover crop drilling and spraying | Iowa State University Extension and Outreach, https://www.extension.iastate.edu/agdm/crops/pdf/a1-20.pdf and https://www.extension.iastate.edu/agdm/crops/pdf/a3-10.pdf . |
+| USDA WASDE (10 Nov 2026) and NASS Agricultural Prices (30 Oct 2026) | Gross margin, Iowa: 2026/27 season-average corn and soybean prices; Iowa alfalfa hay price | USDA Office of the Chief Economist and NASS, https://www.usda.gov/oce/commodity/wasde/wasde1126.pdf , https://esmis.nal.usda.gov/sites/default/release-files/796128/agpr1026.pdf . U.S. Government data. |
+| OMAFA Publication 60, Field Crop Budgets (2026) | Gross margin, Ontario: yields and costs before land; cover crop seed and custom rates | Ontario Ministry of Agriculture, Food and Agribusiness, https://www.ontario.ca/page/publication-60-field-crop-budgets . |
+| Statistics Canada Table 32-10-0077-01, Farm product prices | Gross margin, Ontario: crop prices (mean of Oct 2025 to Sep 2026) | Statistics Canada, https://doi.org/10.25318/3210007701-eng . Statistics Canada Open Licence. |
 | OpenStreetMap | Map tiles | © OpenStreetMap contributors (ODbL); tile usage policy applies, light development use only. |
 
 ## Third-party software
