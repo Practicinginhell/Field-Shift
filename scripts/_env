@@ -1,0 +1,11 @@
+# scripts/_env — sourced by the wrappers. Picks the Python interpreter.
+#
+# Order: $PYTHON if set, else this project's conda env, else `python` on PATH.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -z "${PYTHON:-}" ]; then
+  if [ -x "$HOME/miniconda3/envs/nasa-challenge/bin/python" ]; then
+    PYTHON="$HOME/miniconda3/envs/nasa-challenge/bin/python"
+  else
+    PYTHON="python"
+  fi
+fi

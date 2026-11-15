@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# scripts/lint — static checks, read-only: ruff (backend), TypeScript compiler (frontend).
+#
+# Contract: exit 0 = clean.
+set -euo pipefail
+source "$(dirname "$0")/_env"
+
+(cd "$ROOT/backend" && "$PYTHON" -m ruff check . && "$PYTHON" -m ruff format --check .)
+(cd "$ROOT/frontend" && npx tsc --noEmit)

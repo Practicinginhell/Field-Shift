@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# scripts/setup — install backend (editable, with dev extras) and frontend dependencies.
+#
+# Needs the conda env first: conda create -n nasa-challenge python=3.14
+# Installing changes that environment and downloads packages, so agents ask first.
+#
+# Contract: idempotent, non-interactive, exit 0 on success.
+set -euo pipefail
+source "$(dirname "$0")/_env"
+
+if command -v uv >/dev/null 2>&1; then
+  uv pip install --python "$PYTHON" -e "$ROOT/backend[dev]"
+else
+  "$PYTHON" -m pip install -e "$ROOT/backend[dev]"
+fi
+(cd "$ROOT/frontend" && npm install)

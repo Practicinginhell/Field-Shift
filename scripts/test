@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# scripts/test — run both test suites, offline.
+#
+#   ./scripts/test                      backend (pytest), then frontend (vitest)
+#   ./scripts/test api [pytest args]    backend only, e.g. ./scripts/test api -k health
+#   ./scripts/test web [vitest args]    frontend only
+#
+# Contract: exit 0 = all green, non-zero = failures. Non-interactive.
+set -euo pipefail
+source "$(dirname "$0")/_env"
+
+api() { (cd "$ROOT/backend" && "$PYTHON" -m pytest -q "$@"); }
+web() { (cd "$ROOT/frontend" && npx vitest run "$@"); }
+
+case "${1:-all}" in
+  api) shift; api "$@" ;;
+  web) shift; web "$@" ;;
+  all) api; web ;;
+  *) echo "usage: scripts/test [api|web] [args]" >&2; exit 2 ;;
+esac

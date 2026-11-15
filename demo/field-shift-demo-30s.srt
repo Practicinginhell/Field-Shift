@@ -1,0 +1,27 @@
+1
+00:00:00,000 --> 00:00:04,100
+Pick your field on the map, then load past crops from satellite maps.
+
+2
+00:00:04,100 --> 00:00:07,800
+Weight seven farm priorities, then compare crop rotations.
+
+3
+00:00:07,800 --> 00:00:11,700
+NASA climate and local soil data reveal water gaps and tradeoffs.
+
+4
+00:00:11,700 --> 00:00:17,100
+Watch four rotations in 3D: seasonal sun, wind physics, snow, and rain.
+
+5
+00:00:17,100 --> 00:00:21,400
+Inspect Soil and Roots to 1.5 meters, plus top-down canopy.
+
+6
+00:00:21,400 --> 00:00:25,400
+Replay Landsat and MODIS field observations, in light or dark mode.
+
+7
+00:00:25,400 --> 00:00:29,300
+Cited NASA evidence and clear gaps—guiding your decision.

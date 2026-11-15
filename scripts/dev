@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# scripts/dev — run the app locally.
+#
+#   ./scripts/dev        API on :8000 and web on :5173 together (Ctrl-C stops both)
+#   ./scripts/dev api    API only (uvicorn, auto-reload)
+#   ./scripts/dev web    web only (Vite; proxies /api to :8000)
+#
+# Before starting, it stops whatever is already listening on the port it needs
+# (usually a dev server left over from an earlier run), and checks that the
+# dependencies are installed. Runs in the foreground, logs to stdout/stderr.
+# Works with the macOS system bash (3.2).
+set -euo pipefail
+source "$(dirname "$0")/_env"
+
+# Secrets such as EARTHDATA_USERNAME / EARTHDATA_PASSWORD live in the gitignored .env.
+# The API reads that file literally (app/envfile.py); sourcing it here would let the
+# shell rewrite passwords containing $, # or backticks.
+export ENV_FILE="$ROOT/.env"
+
+API_PORT=8000
+WEB_PORT=5173
+
+listeners() { lsof -nP -t -iTCP:"$1" -sTCP:LISTEN 2>/dev/null || true; }
+
+# Stop every process listening on TCP port $1: TERM first, KILL after 5 s.
+free_port() {
+  local port=$1 pids pid i
+  pids=$(listeners "$port")
+  [ -z "$pids" ] && return 0
+  for pid in $pids; do
+    echo "dev: port $port is in use by PID $pid ($(ps -o command= -p "$pid" 2>/dev/null | cut -c1-80)); stopping it" >&2
+  done
+  kill $pids 2>/dev/null || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    [ -z "$(listeners "$port")" ] && return 0
+    sleep 0.5
+  done
+  pids=$(listeners "$port")
+  [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+  sleep 0.5
+  if [ -n "$(listeners "$port")" ]; then
+    echo "dev: could not free port $port (owned by another user?). Check: lsof -iTCP:$port -sTCP:LISTEN" >&2
+    exit 1
+  fi
+}
+
+check_api() {
+  if ! "$PYTHON" -c "import fastapi, uvicorn, httpx2, pyproj" 2>/dev/null; then
+    echo "dev: backend dependencies are missing for $PYTHON. Run ./scripts/setup first." >&2
+    exit 1
+  fi
+}
+
+check_web() {
+  if [ ! -x "$ROOT/frontend/node_modules/.bin/vite" ]; then
+    echo "dev: frontend dependencies are missing. Run ./scripts/setup first." >&2
+    exit 1
+  fi
+}
+
+api() {
+  cd "$ROOT/backend"
+  exec "$PYTHON" -m uvicorn app.main:app --reload --port "$API_PORT"
+}
+# --strictPort: fail loudly rather than drift to 5174, where the URL in the docs is wrong.
+web() {
+  cd "$ROOT/frontend"
+  exec ./node_modules/.bin/vite --port "$WEB_PORT" --strictPort
+}
+
+case "${1:-all}" in
+  api) check_api; free_port "$API_PORT"; api ;;
+  web) check_web; free_port "$WEB_PORT"; web ;;
+  all)
+    check_api
+    check_web
+    free_port "$API_PORT"
+    free_port "$WEB_PORT"
+    # Stop only our own two servers (not `kill 0`, which would also hit a caller
+    # that shares our process group, such as a task runner).
+    api_pid="" web_pid=""
+    cleanup() {
+      trap - EXIT INT TERM
+      kill $api_pid $web_pid 2>/dev/null || true
+      wait 2>/dev/null || true
+    }
+    trap cleanup EXIT
+    trap 'exit 130' INT TERM
+    (api) &
+    api_pid=$!
+    (web) &
+    web_pid=$!
+    echo "dev: open http://localhost:$WEB_PORT (API on http://localhost:$API_PORT/api/health)"
+    # If either server exits, stop the other too (bash 3.2 has no `wait -n`).
+    while kill -0 "$api_pid" 2>/dev/null && kill -0 "$web_pid" 2>/dev/null; do
+      sleep 1
+    done
+    echo "dev: a server stopped; shutting down the other" >&2
+    exit 1
+    ;;
+  *) echo "usage: scripts/dev [api|web]" >&2; exit 2 ;;
+esac

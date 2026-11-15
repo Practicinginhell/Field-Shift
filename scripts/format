@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# scripts/format — format the backend and apply ruff's safe autofixes, in place.
+# The frontend has no formatter yet.
+#
+# Contract: idempotent, non-interactive.
+set -euo pipefail
+source "$(dirname "$0")/_env"
+
+cd "$ROOT/backend"
+"$PYTHON" -m ruff format --quiet .
+"$PYTHON" -m ruff check --fix --quiet . || {
+  echo "scripts/format: some lint errors have no autofix; run ./scripts/lint" >&2
+}
