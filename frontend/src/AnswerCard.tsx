@@ -18,6 +18,7 @@ interface Props {
   /** Checks for this suggestion only; checks shared by every option are listed once below. */
   checks: string[];
   onSeeWhy: (id: string) => void;
+  onSeeSeasons?: () => void;
 }
 
 /** "a", "a and b", "a, b and c". */
@@ -40,7 +41,7 @@ function marginFact(s: Strategy, currency?: string | null): string | null {
   return text;
 }
 
-export default function AnswerCard({ baseline, top, firstStep, currency, newCrops, checks, onSeeWhy }: Props) {
+export default function AnswerCard({ baseline, top, firstStep, currency, newCrops, checks, onSeeWhy, onSeeSeasons }: Props) {
   const keepCurrent = !top || top.total <= baseline.total;
   const shown = keepCurrent ? baseline : top;
   const margin = marginFact(shown, currency);
@@ -103,9 +104,16 @@ export default function AnswerCard({ baseline, top, firstStep, currency, newCrop
       <p className="answer-reminder">
         {t("This is a suggestion from data, not a decision. You know your field: you make the call.")}
       </p>
-      <button type="button" className="secondary" onClick={() => onSeeWhy(shown.id)}>
-        {t("See why and the evidence")}
-      </button>
+      <div className="answer-actions">
+        <button type="button" className="secondary" onClick={() => onSeeWhy(shown.id)}>
+          {t("See why and the evidence")}
+        </button>
+        {onSeeSeasons && (
+          <button type="button" className="secondary" onClick={onSeeSeasons}>
+            {t("See through the seasons (3D)")}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

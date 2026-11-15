@@ -3,6 +3,7 @@ import type {
   CropHistory,
   CropNumbers,
   CropOption,
+  LocateResult,
   ObservedField,
   Priorities,
   RotationYear,
@@ -63,4 +64,10 @@ export async function fetchObserved(latitude: number, longitude: number, lang = 
   const response = await fetch(`/api/observed?${params}`);
   if (response.status === 404) return null;
   return getJson(response);
+}
+
+/** Resolve a town, postal code, or place name to field coordinates. */
+export async function locatePlace(query: string): Promise<LocateResult> {
+  const params = new URLSearchParams({ q: query });
+  return getJson(await fetch(`/api/locate?${params}`));
 }

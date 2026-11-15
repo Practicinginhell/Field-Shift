@@ -13,13 +13,39 @@ export const FR: Record<string, string> = {
   Dark: "Sombre",
   "Your field": "Votre champ",
   "1. Your field": "1. Votre champ",
+  "Search town, postal code, or lat, lon": "Ville, code postal ou lat., lon.",
+  Find: "Trouver",
+  "Finding…": "Recherche…",
+  "Use my location": "Ma position",
+  "Use your device location": "Utiliser la position de votre appareil",
+  "Enter a town, postal code, or coordinates like 42.03, -93.63.":
+    "Entrez une ville, un code postal ou des coordonnées comme 42,03, -93,63.",
+  "Enter at least 2 characters to search for a place.":
+    "Entrez au moins 2 caractères pour chercher un lieu.",
+  "Moved pin to entered coordinates.": "Épingle déplacée aux coordonnées entrées.",
+  "Looking up {query}…": "Recherche de {query}…",
+  "Found {name}.": "Lieu trouvé : {name}.",
+  'No place matched "{query}". Try a nearby town, postal code, or lat, lon.':
+    "Aucun lieu trouvé pour « {query} ». Essayez une ville voisine, un code postal ou lat., lon.",
+  "Could not look up that place right now ({error}). Try coordinates or click the map.":
+    "Impossible de chercher ce lieu pour l'instant ({error}). Essayez des coordonnées ou cliquez sur la carte.",
+  "Location access is not available in this browser.":
+    "L'accès à la position n'est pas offert dans ce navigateur.",
+  "Using your current location.": "Utilisation de votre position actuelle.",
+  "Location permission was denied. Search a town or click the map instead.":
+    "L'accès à la position a été refusé. Cherchez une ville ou cliquez sur la carte.",
+  "Could not read your location right now. Search a town or click the map instead.":
+    "Impossible de lire votre position pour l'instant. Cherchez une ville ou cliquez sur la carte.",
   "Your field (the pin):": "Votre champ (l'épingle) :",
+  "Map: click to choose your field": "Carte : cliquez pour choisir votre champ",
   "Click the map to move it, and we then read its past crops.":
     "Cliquez sur la carte pour la déplacer; nous lisons ensuite ses cultures passées.",
   "2. What you grow": "2. Ce que vous cultivez",
   "Fill from past crop maps (U.S. and Canada)": "Remplir à partir des cartes de cultures (États-Unis et Canada)",
   "3. Your farm": "3. Votre ferme",
   "What matters most to you": "Ce qui compte le plus pour vous",
+  "Goals: {goals}": "Objectifs : {goals}",
+  Adjust: "Ajuster",
   "Your water and your limits": "Votre eau et vos contraintes",
   "This field is irrigated": "Ce champ est irrigué",
   "Crops you can't grow or sell here": "Cultures que vous ne pouvez pas cultiver ou vendre ici",
@@ -35,8 +61,8 @@ export const FR: Record<string, string> = {
     "Le serveur est injoignable. Démarrez-le avec ./scripts/dev.",
   "Reading this field's past crops from satellite crop maps… (U.S. fields can take a minute)":
     "Lecture des cultures passées de ce champ sur les cartes satellitaires… (les champs américains peuvent prendre une minute)",
-  "No crop map covers this point (we read U.S. and Canadian maps). The rotation below is unchanged: set it to what you grow.":
-    "Aucune carte de cultures ne couvre ce point (nous lisons les cartes américaines et canadiennes). La rotation ci-dessous n'a pas changé : indiquez ce que vous cultivez.",
+  "No crop data at this pin (town centers and yards aren't mapped; we cover U.S. and Canadian cropland). Click your field on the map, or set what you grow below.":
+    "Aucune donnée de culture à cette épingle (les centres-villes et cours de ferme ne sont pas cartographiés; nous couvrons les terres agricoles des États-Unis et du Canada). Cliquez sur votre champ sur la carte, ou indiquez ce que vous cultivez ci-dessous.",
   "no answer": "pas de réponse",
   "Past crops from {source}: {listed}. Your own edits were kept.":
     "Cultures passées selon {source} : {listed}. Vos propres modifications ont été conservées.",
@@ -64,10 +90,10 @@ export const FR: Record<string, string> = {
   "Remove year {n}": "Retirer l'année {n}",
   remove: "retirer",
   "Greyed-out cover crop: winter wheat and alfalfa already cover the soil over winter, and a fallow year is left unplanted.":
-    "Couverture grisée : le blé d'automne et la luzerne couvrent déjà le sol l'hiver, et une année de jachère n'est pas semée.",
+    "Culture de couverture grisée : le blé d'automne et la luzerne couvrent déjà le sol l'hiver, et une année de jachère n'est pas semée.",
   "Add a year": "Ajouter une année",
-  "0 = skip, 5 = top priority — sets how much each goal weighs.":
-    "0 = ignorer, 5 = priorité absolue : fixe le poids de chaque objectif.",
+  "0 = skip, 5 = top priority. It sets how much each goal weighs.":
+    "0 = ignorer, 5 = priorité absolue. Fixe le poids de chaque objectif.",
 
   // --------------------------------------------------------------- goals (constants)
   "Save water": "Économiser l'eau",
@@ -125,6 +151,7 @@ export const FR: Record<string, string> = {
   "Result sections": "Sections des résultats",
   Suggestion: "Suggestion",
   Compare: "Comparer",
+  "3D Seasons": "Saisons 3D",
   "More detail": "Plus de détails",
   "Your rotation or priorities changed since this comparison.":
     "Votre rotation ou vos priorités ont changé depuis cette comparaison.",
@@ -135,7 +162,7 @@ export const FR: Record<string, string> = {
   "Your current rotation fits what you told us best": "Votre rotation actuelle correspond le mieux à ce que vous nous avez dit",
   "Soil covered by living plants about {months} months a year":
     "Sol couvert de plantes vivantes environ {months} mois par an",
-  " (now {n})": " (maintenant {n})",
+  " (now {n})": " (actuellement {n})",
   "Uses about {mm} mm of water a year": "Utilise environ {mm} mm d'eau par an",
   "Gross margin about {money} an acre a year": "Marge brute d'environ {money} l'acre par an",
   ", {money} less than now": ", {money} de moins qu'aujourd'hui",
@@ -147,7 +174,7 @@ export const FR: Record<string, string> = {
   "A smaller first step": "Un premier pas plus simple",
   "{name}. Keeps your crops: soil covered about {months} months a year":
     "{name}. Garde vos cultures : sol couvert environ {months} mois par an",
-  "Only you know": "Vous seul le savez",
+  "Only you know": "À vous de répondre",
   "Is there a buyer and the equipment for {crops} on your farm?":
     "Y a-t-il un acheteur et l'équipement pour {crops} sur votre ferme?",
   "Check before you change": "À vérifier avant de changer",
@@ -156,6 +183,7 @@ export const FR: Record<string, string> = {
   "This is a suggestion from data, not a decision. You know your field: you make the call.":
     "Ceci est une suggestion fondée sur des données, pas une décision. Vous connaissez votre champ : c'est vous qui décidez.",
   "See why and the evidence": "Voir pourquoi et les données",
+  "See through the seasons (3D)": "Voir au fil des saisons (3D)",
 
   // ------------------------------------------------------------------- comparison
   "All options side by side": "Toutes les options côte à côte",
@@ -182,8 +210,8 @@ export const FR: Record<string, string> = {
   "See details": "Voir les détails",
   "See why and what to check": "Voir pourquoi et quoi vérifier",
   "Your call": "C'est vous qui décidez",
-  "These options come from NASA data and general crop facts. You know things the data doesn't. Change any of these and the comparison updates.":
-    "Ces options viennent des données de la NASA et de faits généraux sur les cultures. Vous savez des choses que les données ignorent. Changez l'un de ces choix et la comparaison se met à jour.",
+  "These options come from NASA data and general crop facts. You know things the data doesn't. Change any of these to update the comparison.":
+    "Ces options viennent des données de la NASA et de faits généraux sur les cultures. Vous savez des choses que les données ignorent. Modifiez n'importe laquelle pour mettre à jour la comparaison.",
   "Then take the option you like to your extension advisor or agronomist.":
     "Puis présentez l'option qui vous plaît à votre conseiller agricole ou à votre agronome.",
   "What matters most:": "Ce qui compte le plus :",
@@ -196,6 +224,7 @@ export const FR: Record<string, string> = {
   "Rule out crops you can't grow or sell": "Écarter des cultures",
   "Yields and prices:": "Rendements et prix :",
   "Enter your yields and prices": "Entrer vos rendements et vos prix",
+  "Hide yields and prices": "Masquer les rendements et les prix",
   "your own for {n} crops": "les vôtres pour {n} cultures",
   "your own for 1 crop": "les vôtres pour 1 culture",
   "{region} 2026 budget": "budget {region} 2026",
@@ -225,7 +254,7 @@ export const FR: Record<string, string> = {
   ton: "tonne courte",
 
   // ------------------------------------------------------------------ score table
-  "Select any row to inspect its reasons, evidence, gaps, and local checks below — and highlight it in 3D. Columns follow your priority weights (0 = de-emphasised).":
+  "Select any row to inspect its reasons, evidence, gaps, and local checks below, and highlight it in 3D. Columns follow your priority weights (0 = de-emphasised).":
     "Choisissez une ligne pour voir ses raisons, données, lacunes et vérifications locales ci-dessous, et la mettre en évidence en 3D. Les colonnes suivent le poids de vos priorités (0 = atténué).",
   "Rotations compared at a glance": "Rotations comparées en un coup d'œil",
   "Fit score": "Score d'adéquation",
@@ -306,7 +335,7 @@ export const FR: Record<string, string> = {
   moderate: "modérée",
   high: "élevée",
   "Monthly water balance": "Bilan hydrique mensuel",
-  "Click any month to inspect & jump 3D view": "Cliquez un mois pour l'examiner et y aller en 3D",
+  "Click any month to inspect & jump 3D view": "Cliquez sur un mois pour l'examiner et y aller en 3D",
   "Average rain and evaporation demand by month": "Pluie moyenne et demande d'évaporation par mois",
   "{month}: Rain {rain} mm, evaporation demand {et0} mm": "{month} : pluie {rain} mm, demande d'évaporation {et0} mm",
   "Rain {mm} mm": "Pluie {mm} mm",
@@ -318,7 +347,7 @@ export const FR: Record<string, string> = {
   "Viewing in 3D ↓": "Affiché en 3D ↓",
   "Click to jump 3D ↓": "Cliquez pour y aller en 3D ↓",
   "Hover or click a month to inspect its water balance and jump the 3D view.":
-    "Survolez ou cliquez un mois pour voir son bilan hydrique et y aller dans la vue 3D.",
+    "Survolez un mois ou cliquez dessus pour voir son bilan hydrique et y aller dans la vue 3D.",
   "Loading the 3D season view…": "Chargement de la vue 3D des saisons…",
   "Loading the satellite replay…": "Chargement du rejeu satellitaire…",
   "MODIS & SMAP record": "Données MODIS et SMAP",
@@ -364,7 +393,7 @@ export const FR: Record<string, string> = {
   "Rye cover": "Couvert de seigle",
   "Rye cover crop": "Couvert de seigle",
   "Season view": "Vue des saisons",
-  "Watch the seasons": "Regardez les saisons",
+  "Watch the seasons": "Suivez les saisons",
   "All {n} compared rotations side by side in your field's average weather ({period}), month by month.":
     "Les {n} rotations comparées côte à côte dans la météo moyenne de votre champ ({period}), mois par mois.",
   "3D camera view": "Vue de la caméra 3D",
@@ -398,7 +427,7 @@ export const FR: Record<string, string> = {
   "bare soil in a heavy-rain month": "sol à nu pendant un mois de fortes pluies",
   "Figures for this month": "Chiffres de ce mois",
   "Rain {rain} mm · evaporative demand {et0} mm": "Pluie {rain} mm · demande d'évaporation {et0} mm",
-  " · heavy rain on {n} days": " · fortes pluies {n} jours",
+  " · heavy rain on {n} days": " · fortes pluies pendant {n} jours",
   " · {n} days at 35 °C or more": " · {n} jours à 35 °C ou plus",
   "Year {n}: {state}": "Année {n} : {state}",
   "Rain − crop water use, this month": "Pluie − besoins en eau, ce mois-ci",
@@ -437,20 +466,20 @@ export const FR: Record<string, string> = {
   "Heavy rain on bare soil": "Fortes pluies sur sol à nu",
   "{n} of {total} options keeps the soil covered": "{n} option sur {total} garde le sol couvert",
   "{n} of {total} options keep the soil covered": "{n} options sur {total} gardent le sol couvert",
-  "Largest water-use gap": "Plus grand écart d'eau",
+  "Largest water-use gap": "Plus grand écart de consommation d'eau",
   "{option} uses {mm} mm more than your rotation": "{option} utilise {mm} mm de plus que votre rotation",
   "{option} uses {mm} mm less than your rotation": "{option} utilise {mm} mm de moins que votre rotation",
   "Living roots where yours has none": "Des racines vivantes là où la vôtre n'en a pas",
   "{option} roots reach about {m} m": "Les racines de {option} atteignent environ {m} m",
-  "{name}, just sown (little cover yet)": "{name}, fraîchement semé (encore peu de couvert)",
-  "{name}, protecting the soil": "{name}, protège le sol",
-  "{name}, ready to harvest": "{name}, prêt à récolter",
+  "{name}, just sown (little cover yet)": "{name}, semis récent (encore peu de couvert)",
+  "{name}, protecting the soil": "{name}, qui protège le sol",
+  "{name}, ready to harvest": "{name}, à maturité",
   "{name}, resting over winter": "{name}, en dormance l'hiver",
   "{name}, full canopy": "{name}, couvert complet",
   "{name}, growing": "{name}, en croissance",
-  "{name} · Just sown": "{name} · Fraîchement semé",
+  "{name} · Just sown": "{name} · Semis récent",
   "{name} · Living cover": "{name} · Couvert vivant",
-  "{name} · Ready to harvest": "{name} · Prêt à récolter",
+  "{name} · Ready to harvest": "{name} · À maturité",
   "{name} · Overwintering": "{name} · Hivernage",
   "{name} · Full canopy": "{name} · Couvert complet",
   "{name} · Growing": "{name} · En croissance",
@@ -475,13 +504,13 @@ export const FR: Record<string, string> = {
   "Year and crop": "Année et culture",
   "{year} season": "Saison {year}",
   "Greened up": "Reverdissement",
-  Greenest: "Plus vert",
+  Greenest: "Verdure maximale",
   "Died back or harvested": "Sénescence ou récolte",
   "{first}–{last}, observed": "{first}–{last}, observé",
   "Months the soil was bare": "Mois où le sol était à nu",
   "…of which in a heavy-rain month": "…dont pendant un mois de fortes pluies",
   "Months likely under snow": "Mois probablement sous la neige",
-  "How this was worked out — satellite rules, model checks, and limits":
+  "How this was worked out: satellite rules, model checks, and limits":
     "Comment c'est calculé : règles satellitaires, vérification des modèles et limites",
   "Greenness comes from Landsat and Sentinel-2 (30 m), season dates from MODIS, crops from the crop map. While this is open, the picture and the grid above also show the greenness index, the months that looked unusual ({n} flagged) and the crop a model reads from the season's curve. Surface soil moisture this month (SMAP, 9 km area): {sm}.":
     "La verdure vient de Landsat et Sentinel-2 (30 m), les dates de saison de MODIS, les cultures de la carte des cultures. Tant que ceci est ouvert, l'image et la grille ci-dessus montrent aussi l'indice de verdure, les mois inhabituels ({n} signalés) et la culture qu'un modèle lit dans la courbe de la saison. Humidité du sol en surface ce mois-ci (SMAP, zone de 9 km) : {sm}.",
@@ -495,9 +524,9 @@ export const FR: Record<string, string> = {
   "Which crop grew here? A model trained on the satellite curves":
     "Quelle culture a poussé ici? Un modèle entraîné sur les courbes satellitaires",
   "Trained on {n} field-interior pixels of eastern Ontario, labelled by Agriculture and Agri-Food Canada's crop map. It reads the crop from the season's greenness alone. {note} The app uses {chosen}. The weeks that tell the crops apart most: {days}.":
-    "Entraîné sur {n} pixels à l'intérieur de champs de l'est de l'Ontario, étiquetés par la carte des cultures d'Agriculture et Agroalimentaire Canada. Il lit la culture à partir de la seule verdure de la saison. {note} L'application utilise {chosen}. Les semaines qui distinguent le mieux les cultures : {days}.",
+    "Entraîné sur {n} pixels à l'intérieur de champs de l'Est de l'Ontario, étiquetés par la carte des cultures d'Agriculture et Agroalimentaire Canada. Il lit la culture à partir de la seule verdure de la saison. {note} L'application utilise {chosen}. Les semaines qui distinguent le mieux les cultures : {days}.",
   Approach: "Approche",
-  "Correct (test)": "Correct (test)",
+  "Correct (test)": "Bonnes réponses (test)",
   "Balanced score (macro F1)": "Score équilibré (F1 macro)",
   " (used)": " (utilisée)",
   'A "?" next to a year means the curve and the crop map disagree. Either can be wrong: the map is itself a model\'s output. You know what you planted.':
@@ -515,7 +544,7 @@ export const FR: Record<string, string> = {
   "Wetter soil than expected": "Sol plus humide que prévu",
   "both methods agree": "les deux méthodes concordent",
   "{method} only": "{method} seulement",
-  "Satellite curve reads: {crop} ({pct}% sure)": "La courbe satellitaire indique : {crop} (sûr à {pct} %)",
+  "Satellite curve reads: {crop} ({pct}% sure)": "La courbe satellitaire indique : {crop} (confiance {pct} %)",
   ", matches the crop map": ", conforme à la carte des cultures",
   ", not what the crop map says: worth a check": ", différent de la carte des cultures : à vérifier",
 };

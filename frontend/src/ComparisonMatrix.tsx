@@ -56,7 +56,7 @@ export default function ComparisonMatrix({
       <div className="matrix-head-note">
         <p className="hint">
           {t(
-            "Select any row to inspect its reasons, evidence, gaps, and local checks below — and highlight it in 3D. Columns follow your priority weights (0 = de-emphasised).",
+            "Select any row to inspect its reasons, evidence, gaps, and local checks below, and highlight it in 3D. Columns follow your priority weights (0 = de-emphasised).",
           )}
         </p>
       </div>

@@ -69,3 +69,7 @@ test("English is the source text; French fills placeholders and writes numbers t
   expect(num(10.3)).toBe("10,3");
   expect(document.documentElement.lang).toBe("fr");
 });
+
+test("page text has no em dash (a colon or a full stop reads better)", () => {
+  expect([...keysInSource().keys()].filter((k) => k.includes("—"))).toEqual([]);
+});

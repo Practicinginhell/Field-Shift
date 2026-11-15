@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 
+import { setLang } from "./i18n";
 import { applyMargins, rotationMargin } from "./margin";
 import { ALTERNATIVE, BASELINE } from "./testData";
 import type { CropNumbers } from "./types";
@@ -23,6 +24,14 @@ test("names what is missing instead of guessing", () => {
   const r = rotationMargin([{ crop: "canola", cover: true }], IOWA, null, NAMES);
   expect(r.value).toBeNull();
   expect(r.missing).toEqual(["Canola", "Winter rye cover"]);
+
+  setLang("fr");
+  try {
+    const fr = rotationMargin([{ crop: "canola", cover: true }], IOWA, null, NAMES);
+    expect(fr.missing).toEqual(["Canola", "Couvert de seigle d'automne"]);
+  } finally {
+    setLang("en");
+  }
 });
 
 test("recomputes every rotation and its difference from the current one", () => {

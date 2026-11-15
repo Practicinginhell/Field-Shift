@@ -156,8 +156,8 @@ def test_a_change_and_its_reason_are_two_sentences_both_in_french():
     assert ok
     assert text == (
         "Garde vos cultures actuelles et ajoute une année de canola avec un couvert de seigle "
-        "d'automne. Suggérée parce que vous tenez à briser les cycles des ravageurs et de bons "
-        "débouchés, et elle fait mieux que votre rotation actuelle sur ces points."
+        "d'automne. Suggérée parce que vous tenez à briser les cycles des ravageurs et à de "
+        "bons débouchés, et elle fait mieux que votre rotation actuelle sur ces points."
     )
 
 
@@ -170,3 +170,52 @@ def test_abbreviated_months_and_decimals_read_cleanly():
     assert value == "matière organique 3,6 %, réserve en eau 0,126 cm/cm"
     method, _ = i18n.fr("TimesFM 2.5, greenness (MODIS NDVI)", loose=True)
     assert method == "TimesFM 2.5, verdure (MODIS NDVI)"
+
+
+def test_french_reads_naturally():
+    cases = {
+        "About 5 days a year bring heavy rain (25 mm or more), most often in Jun and Aug.": (
+            "Environ 5 jours par an apportent de fortes pluies (25 mm ou plus), surtout en juin "
+            "et août."
+        ),
+        "About 1 day a year brings heavy rain (25 mm or more), most often in May and Oct.": (
+            "Environ 1 jour par an apporte de fortes pluies (25 mm ou plus), surtout en mai et oct."
+        ),
+        "About 4 days a year reach 35 °C or more.": (
+            "Environ 4 jours par an atteignent 35 °C ou plus."
+        ),
+        "Swaps spring wheat for corn.": "Remplace le blé de printemps par le maïs.",
+        "Swaps corn for oats with winter rye cover.": (
+            "Remplace le maïs par l'avoine avec un couvert de seigle d'automne."
+        ),
+        "Suggested because you care about market suitability and reducing erosion, and it "
+        "scores better there than your current rotation.": (
+            "Suggérée parce que vous tenez à de bons débouchés et à réduire l'érosion, et elle "
+            "fait mieux que votre rotation actuelle sur ces points."
+        ),
+        "This area averages 43 days a year at 35 °C or more, and spring wheat can lose yield "
+        "in the heat.": (
+            "Ce secteur compte en moyenne 43 jours par an à 35 °C ou plus, et le blé de "
+            "printemps peut perdre du rendement à la chaleur."
+        ),
+        "Fixes more nitrogen: 3 of 4 years with a legume (now 1 of 2).": (
+            "Fixe plus d'azote : 3 années sur 4 avec une légumineuse (actuellement 1 sur 2)."
+        ),
+    }
+    for en, expected in cases.items():
+        assert i18n.fr(en) == (expected, True)
+
+
+def test_new_crops_are_named_without_nested_brackets(monkeypatch):
+    use_data(monkeypatch)
+    body = {
+        **BODY,
+        "latitude": 39.465,
+        "longitude": -118.865,
+        "irrigated": True,
+        "current_rotation": [{"crop": "alfalfa"}] * 3 + [{"crop": "spring_wheat"}],
+    }
+    notes = [n for s in analyze(body)["strategies"] for n in s["local_review"]]
+    new = [n for n in notes if n.startswith("New crops (")]
+    assert new
+    assert not [n for n in new if "(grain)" in n]

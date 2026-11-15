@@ -547,7 +547,7 @@ def _local_review(ev: Evaluation, base: Evaluation | None, site: Site) -> list[s
                 f"This area averages {_days(site.climate.heat_days_per_year)} a year at "
                 f"35 °C or more, and {crop.name.lower()} can lose yield in the heat."
             )
-    new = [c.name.lower() for c in crops if base and c.key not in base_keys and c.key != "fallow"]
+    new = [_short_name(c) for c in crops if base and c.key not in base_keys and c.key != "fallow"]
     if new:
         notes.append(f"New crops ({', '.join(new)}) may need different equipment, seed or buyers.")
     if any(m.cover for m in ev.metrics):

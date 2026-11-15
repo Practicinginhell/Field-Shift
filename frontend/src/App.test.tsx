@@ -160,7 +160,7 @@ test("says so when no crop map covers the clicked point, and keeps the rotation"
 
   fireEvent.click(screen.getByRole("button", { name: "map" }));
 
-  expect(await screen.findByText(/No crop map covers this point/)).toBeTruthy();
+  expect(await screen.findByText(/town centers and yards aren't mapped/)).toBeTruthy();
   expect((screen.getByLabelText("Year 1 crop") as HTMLSelectElement).value).toBe("corn");
 });
 
@@ -453,4 +453,96 @@ test("answering yes keeps the option and says so", async () => {
 
   expect(screen.getByText(/You can grow and sell Alfalfa/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "No, rule out Alfalfa" })).toBeNull();
+});
+
+test("finds a field by pasted coordinates without /api/locate, by town via /api/locate, or by GPS", async () => {
+  const baseFetch = stubApi(() => Promise.reject(new Error("not called")));
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    if (url.startsWith("/api/locate?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ latitude: 42.0308, longitude: -93.6319, display_name: "Ames, Iowa" })),
+      );
+    }
+    return baseFetch(url, init);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition: (ok: (pos: { coords: { latitude: number; longitude: number } }) => void) =>
+        ok({ coords: { latitude: 43.5448, longitude: -80.2482 } }),
+    },
+  });
+
+  render(<App />);
+  const search = await screen.findByLabelText("Search town, postal code, or lat, lon");
+
+  fireEvent.change(search, { target: { value: "41.5868, -93.6250" } });
+  fireEvent.click(screen.getByRole("button", { name: "Find" }));
+  expect(screen.getByText(/41\.59° N, 93\.63° W/)).toBeTruthy();
+  expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/locate"))).toBe(false);
+
+  fireEvent.change(search, { target: { value: "Ames, Iowa" } });
+  fireEvent.click(screen.getByRole("button", { name: "Find" }));
+  expect(await screen.findByText(/42\.03° N, 93\.63° W/)).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith("/api/locate?q=Ames%2C+Iowa");
+
+  fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+  expect(await screen.findByText(/43\.54° N, 80\.25° W/)).toBeTruthy();
+});
+
+test("folds priority sliders by default, surfaces 3D seasons from AnswerCard/StrategyCard, scrolls on RotationList click, and unifies YourNumbers under YourCall", async () => {
+  const scrollIntoViewMock = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoViewMock,
+  });
+  const withEconomics = {
+    ...RESPONSE,
+    economics: {
+      region: "Iowa",
+      currency: "USD",
+      basis: "Costs are variable costs.",
+      cover_crop_cost: 41.55,
+      crops: [{ crop: "corn", name: "Corn (grain)", unit: "bu", yield_per_acre: 211, price: 4.6, cost_per_acre: 483.6, own: false }],
+      sources: [],
+    },
+  };
+  stubApi(() => Promise.resolve(new Response(JSON.stringify(withEconomics))));
+  const { container } = render(<App />);
+
+  await screen.findByRole("button", { name: "Compare rotations" });
+  const prioDetails = container.querySelector("#control-priorities") as HTMLDetailsElement | null;
+  expect(prioDetails?.tagName).toBe("DETAILS");
+  expect(prioDetails?.open).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "Compare rotations" }));
+  await screen.findAllByText("Your current rotation");
+
+  // Single unified "Your yields and prices" trigger inside YourCall (no redundant <details> bar below it).
+  expect(container.querySelector("#control-numbers summary")).toBeNull();
+  expect(screen.queryByLabelText("Corn (grain) price, $ per bu")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Enter your yields and prices" }));
+  expect(screen.getByLabelText("Corn (grain) price, $ per bu")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Hide yields and prices" }));
+  expect(screen.queryByLabelText("Corn (grain) price, $ per bu")).toBeNull();
+
+  // Clicking "See why and what to check" in RotationList scrolls cleanly to #detail-panels.
+  scrollIntoViewMock.mockClear();
+  const listButtons = screen.getAllByRole("button", { name: "See why and what to check" });
+  fireEvent.click(listButtons[0]);
+  expect(scrollIntoViewMock).toHaveBeenCalled();
+
+  // AnswerCard 3D button and StrategyCard "Compare in 3D" both open #sec-more and scroll to #sec-seasons.
+  const more = container.querySelector("#sec-more") as HTMLDetailsElement;
+  expect(more.open).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "See through the seasons (3D)" }));
+  expect(more.open).toBe(true);
+
+  more.open = false;
+  fireEvent.click(screen.getByRole("button", { name: "Compare details with Alfalfa (3 yrs) – Corn" }));
+  const compareBtns = screen.getAllByRole("button", { name: "Compare in 3D" });
+  expect(compareBtns.length).toBeGreaterThanOrEqual(1);
+  fireEvent.click(compareBtns[0]);
+  expect(more.open).toBe(true);
 });

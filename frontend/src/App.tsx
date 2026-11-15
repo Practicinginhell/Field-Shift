@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { getLang, num, saveLang, savedLang, setLang, t, type Lang } from "./i18n";
 
-import { analyze, fetchCropHistory, fetchCrops, fetchObserved } from "./api";
+import { analyze, fetchCropHistory, fetchCrops, fetchObserved, locatePlace } from "./api";
 import ComparisonMatrix from "./ComparisonMatrix";
 import MapView from "./MapView";
 import MonthlyWaterChart from "./MonthlyWaterChart";
@@ -72,6 +72,21 @@ export const PRESETS: Preset[] = [
   },
 ];
 
+const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*(?:°\s*)?([NS])?\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*(?:°\s*)?([EW])?\s*$/i;
+
+/** Parse decimal degrees ("42.03, -93.63" or "42.03° N, 93.63° W"); returns null for place names. */
+export function parseCoordinates(text: string): { latitude: number; longitude: number } | null {
+  const m = COORD_RE.exec(text);
+  if (!m) return null;
+  let latitude = Number(m[1]);
+  let longitude = Number(m[3]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (m[2]) latitude = m[2].toUpperCase() === "S" ? -Math.abs(latitude) : Math.abs(latitude);
+  if (m[4]) longitude = m[4].toUpperCase() === "W" ? -Math.abs(longitude) : Math.abs(longitude);
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
 // "45.22° N, 75.80° W": easier to read than signed decimals.
 export function formatPlace(latitude: number, longitude: number): string {
   const ns = latitude >= 0 ? "N" : "S";
@@ -105,11 +120,12 @@ function summarizeGoals(priorities: Priorities): string {
 const DEFAULT_PRIORITIES: Priorities = { water: 3, soil: 3, nitrogen: 2, erosion: 3, pests: 2, forage: 1, income: 3 };
 
 type ThemeMode = "auto" | "light" | "dark";
-type ResultSectionId = "sec-answer" | "sec-compare" | "sec-more";
+type ResultSectionId = "sec-answer" | "sec-compare" | "sec-seasons" | "sec-more";
 
 export const SECTION_LINKS: { id: ResultSectionId; label: string }[] = [
   { id: "sec-answer", label: "Suggestion" },
   { id: "sec-compare", label: "Compare" },
+  { id: "sec-seasons", label: "3D Seasons" },
   { id: "sec-more", label: "More detail" },
 ];
 
@@ -138,7 +154,13 @@ export default function App() {
   const [editingInputs, setEditingInputs] = useState(true);
   const [selectedDetailIds, setSelectedDetailIds] = useState<string[]>([]);
   const [highlightedStrategyId, setHighlightedStrategyId] = useState<string | null>(null);
+  const [numbersOpen, setNumbersOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<ResultSectionId>("sec-answer");
+  const [locateQuery, setLocateQuery] = useState("");
+  const [locateLoading, setLocateLoading] = useState(false);
+  const [locateNote, setLocateNote] = useState<string | null>(null);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  const locateRequest = useRef(0);
   const [theme, setTheme] = useState<ThemeMode>("auto");
   // English or French; i18n.ts holds the current one for t(), this state re-renders the page.
   const [lang, setLangState] = useState<Lang>(() => {
@@ -217,8 +239,13 @@ export default function App() {
   const choosePreset = (p: Preset) => {
     historyRequest.current += 1; // ignore any crop history still loading
     analyzeRequest.current += 1; // and any comparison still running for the old field
+    locateRequest.current += 1;
     setBusy(false);
     setHistoryLoading(false);
+    setLocateLoading(false);
+    setLocateNote(null);
+    setLocateError(null);
+    setNumbersOpen(false);
     setLatitude(p.latitude);
     setLongitude(p.longitude);
     setOwnNumbers({}); // another farm: its own numbers, and maybe another currency
@@ -235,11 +262,12 @@ export default function App() {
     setHistoryNote(null);
   };
 
-  const pickField = (lat: number, lon: number) => {
+  const applyFieldCoordinates = (lat: number, lon: number) => {
     const latitude = Number(lat.toFixed(4));
     const longitude = Number(lon.toFixed(4));
     analyzeRequest.current += 1; // ignore any comparison still running for the old field
     setBusy(false);
+    setNumbersOpen(false);
     setLatitude(latitude);
     setLongitude(longitude);
     setOwnNumbers({});
@@ -252,6 +280,85 @@ export default function App() {
     setActiveSeasonMonth(null);
     setChartMonthRequest(null);
     void readCropHistory(latitude, longitude);
+  };
+
+  const pickField = (lat: number, lon: number) => {
+    locateRequest.current += 1;
+    setLocateLoading(false);
+    setLocateNote(null);
+    setLocateError(null);
+    applyFieldCoordinates(lat, lon);
+  };
+
+  const locateByText = async () => {
+    const clean = locateQuery.trim();
+    if (!clean) {
+      setLocateError(t("Enter a town, postal code, or coordinates like 42.03, -93.63."));
+      return;
+    }
+    const coords = parseCoordinates(clean);
+    if (coords) {
+      locateRequest.current += 1;
+      setLocateLoading(false);
+      setLocateError(null);
+      setLocateNote(t("Moved pin to entered coordinates."));
+      applyFieldCoordinates(coords.latitude, coords.longitude);
+      return;
+    }
+    if (clean.length < 2) {
+      setLocateError(t("Enter at least 2 characters to search for a place."));
+      return;
+    }
+    const request = ++locateRequest.current;
+    setLocateLoading(true);
+    setLocateError(null);
+    setLocateNote(t("Looking up {query}…", { query: clean }));
+    try {
+      const match = await locatePlace(clean);
+      if (request !== locateRequest.current) return;
+      applyFieldCoordinates(match.latitude, match.longitude);
+      setLocateNote(t("Found {name}.", { name: match.display_name }));
+    } catch (e) {
+      if (request !== locateRequest.current) return;
+      const msg = (e as Error).message;
+      setLocateError(
+        msg === "No matching place found"
+          ? t('No place matched "{query}". Try a nearby town, postal code, or lat, lon.', { query: clean })
+          : t("Could not look up that place right now ({error}). Try coordinates or click the map.", { error: msg }),
+      );
+      setLocateNote(null);
+    } finally {
+      if (request === locateRequest.current) setLocateLoading(false);
+    }
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocateError(t("Location access is not available in this browser."));
+      return;
+    }
+    const request = ++locateRequest.current;
+    setLocateLoading(true);
+    setLocateError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (request !== locateRequest.current) return;
+        setLocateLoading(false);
+        setLocateNote(t("Using your current location."));
+        applyFieldCoordinates(pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => {
+        if (request !== locateRequest.current) return;
+        setLocateLoading(false);
+        setLocateError(
+          err.code === 1
+            ? t("Location permission was denied. Search a town or click the map instead.")
+            : t("Could not read your location right now. Search a town or click the map instead."),
+        );
+        setLocateNote(null);
+      },
+      { enableHighAccuracy: false, timeout: 10000 },
+    );
   };
 
   const isActivePreset = (p: Preset) => p.latitude === latitude && p.longitude === longitude;
@@ -270,7 +377,7 @@ export default function App() {
       const known = history.years.filter((y) => y.crop !== null);
       if (known.length === 0) {
         setHistoryNote(
-          t("No crop map covers this point (we read U.S. and Canadian maps). The rotation below is unchanged: set it to what you grow."),
+          t("No crop data at this pin (town centers and yards aren't mapped; we cover U.S. and Canadian cropland). Click your field on the map, or set what you grow below."),
         );
         return;
       }
@@ -391,11 +498,8 @@ export default function App() {
 
   const openControl = (control: FarmerControl) => {
     if (control === "numbers") {
-      // The numbers table sits in the results, next to the comparison it changes.
-      const el = document.getElementById("control-numbers");
-      if (el instanceof HTMLDetailsElement) el.open = true;
-      el?.scrollIntoView?.({ block: "start" });
-      el?.focus({ preventScroll: true });
+      // Numbers sit inline inside Results; toggling shows/hides them cleanly without leaving the comparison.
+      setNumbersOpen((open) => !open);
       return;
     }
     setEditingInputs(true);
@@ -406,6 +510,18 @@ export default function App() {
       el?.scrollIntoView?.({ block: "center" });
       el?.focus({ preventScroll: true });
     }, 0);
+  };
+
+  const openMoreSection = (sectionId: "sec-seasons" | "sec-more" = "sec-more") => {
+    if (moreRef.current) moreRef.current.open = true;
+    setActiveSection(sectionId);
+    if (sectionId === "sec-seasons") {
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      document.getElementById("sec-seasons")?.scrollIntoView?.({
+        behavior: reducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    }
   };
 
   // An option's crops that are new to the farmer's rotation: only the farmer knows if
@@ -423,7 +539,11 @@ export default function App() {
 
   const seeWhy = (id: string) => {
     selectDetailStrategy(id);
-    window.setTimeout(() => document.getElementById("detail-panels")?.scrollIntoView?.({ block: "start" }), 0);
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    document.getElementById("detail-panels")?.scrollIntoView?.({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "start",
+    });
   };
 
   // The rotations as shown: margins from the numbers table, with the farmer's typing.
@@ -432,7 +552,7 @@ export default function App() {
     const names = { ...cropNames, ...Object.fromEntries(result.economics.crops.map((c) => [c.crop, c.name])) };
     const live = liveNumbers(result.economics, typedNumbers);
     return applyMargins(result.strategies, live.numbers, live.coverCost, names);
-  }, [result, typedNumbers, cropNames]);
+  }, [result, typedNumbers, cropNames, lang]);
   const shownBaseline = shownStrategies.find((s) => s.is_baseline) ?? shownStrategies[0];
 
   const showCollapsedInputs = Boolean(result) && !editingInputs;
@@ -447,7 +567,7 @@ export default function App() {
       map.set(s.id, t("Option {n}", { n: opt }));
     }
     return map;
-  }, [result]);
+  }, [result, lang]);
 
   const { shared: sharedChecks, perStrategy: uniqueChecks } = useMemo(
     () => (result ? splitSharedLocalReview(result.strategies) : { shared: [], perStrategy: new Map<string, string[]>() }),
@@ -542,6 +662,64 @@ export default function App() {
               );
             })}
           </div>
+          <form
+            className="field-locator"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void locateByText();
+            }}
+          >
+            <label htmlFor="field-locate" className="sr-only">
+              {t("Search town, postal code, or lat, lon")}
+            </label>
+            <input
+              id="field-locate"
+              type="search"
+              value={locateQuery}
+              onChange={(e) => {
+                setLocateQuery(e.target.value);
+                if (locateError) setLocateError(null);
+              }}
+              placeholder={t("Search town, postal code, or lat, lon")}
+              autoComplete="off"
+            />
+            <button type="submit" className="secondary locate-find-btn" disabled={locateLoading}>
+              {locateLoading ? t("Finding…") : t("Find")}
+            </button>
+            <button
+              type="button"
+              className="secondary locate-gps-btn"
+              disabled={locateLoading}
+              onClick={useMyLocation}
+              title={t("Use your device location")}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="8" cy="8" r="3" />
+                <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2" />
+              </svg>
+              <span>{t("Use my location")}</span>
+            </button>
+          </form>
+          {locateError && (
+            <p className="hint status-box is-error" role="alert">
+              {locateError}
+            </p>
+          )}
+          {!locateError && locateNote && (
+            <p className={locateLoading ? "hint status-box is-loading" : "hint status-box"} aria-live="polite">
+              {locateNote}
+            </p>
+          )}
           <MapView latitude={latitude} longitude={longitude} onPick={pickField} />
           <p className="hint">
             {t("Your field (the pin):")} <strong>{formatPlace(latitude, longitude)}</strong>.{" "}
@@ -565,16 +743,57 @@ export default function App() {
           )}
 
           <h2 className="step-heading">{t("3. Your farm")}</h2>
-          <h3 id="control-priorities" tabIndex={-1} className="sub-heading">
-            {t("What matters most to you")}
-          </h3>
-          <PrioritySliders
-            priorities={priorities}
-            onChange={(next) => {
-              setPriorities(next);
-              setDirty(true);
-            }}
-          />
+          <details id="control-priorities" tabIndex={-1} className="excluded priorities-disclosure">
+            <summary>
+              <span className="excluded-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 16 16"
+                  width="15"
+                  height="15"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.65"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+                  <circle cx="5.5" cy="4.5" r="1.4" fill="currentColor" />
+                  <circle cx="10.5" cy="8" r="1.4" fill="currentColor" />
+                  <circle cx="6.5" cy="11.5" r="1.4" fill="currentColor" />
+                </svg>
+              </span>
+              <span className="excluded-copy">
+                <span className="excluded-label">{t("What matters most to you")}</span>
+                <span className="excluded-sub">{t("Goals: {goals}", { goals: summarizeGoals(priorities) })}</span>
+              </span>
+              <span className="excluded-trailing">
+                <span className="disclosure-hint">{t("Adjust")}</span>
+                <span className="excluded-chev" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                </span>
+              </span>
+            </summary>
+            <div className="priorities-disclosure-body">
+              <PrioritySliders
+                priorities={priorities}
+                onChange={(next) => {
+                  setPriorities(next);
+                  setDirty(true);
+                }}
+              />
+            </div>
+          </details>
           <h3 className="sub-heading">{t("Your water and your limits")}</h3>
           <label id="control-water" tabIndex={-1} className={irrigated ? "check toggle-card is-active" : "check toggle-card"}>
             <input
@@ -629,18 +848,20 @@ export default function App() {
             </div>
           </details>
 
-          <button type="button" className="primary" onClick={() => run()} disabled={busy || crops.length === 0 || rotationIncomplete}>
-            <span className="primary-cta-text">{busy ? t("Reading NASA data…") : t("Compare rotations")}</span>
-            {!busy && (
-              <span className="primary-cta-arrow" aria-hidden="true">
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3.5 8h9" />
-                  <path d="M9 4.5 12.5 8 9 11.5" />
-                </svg>
-              </span>
-            )}
-          </button>
-          {rotationIncomplete && <p className="hint">{t("Choose a crop for every year in your rotation to compare.")}</p>}
+          <div className="inputs-cta-bar">
+            <button type="button" className="primary" onClick={() => run()} disabled={busy || crops.length === 0 || rotationIncomplete}>
+              <span className="primary-cta-text">{busy ? t("Reading NASA data…") : t("Compare rotations")}</span>
+              {!busy && (
+                <span className="primary-cta-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3.5 8h9" />
+                    <path d="M9 4.5 12.5 8 9 11.5" />
+                  </svg>
+                </span>
+              )}
+            </button>
+            {rotationIncomplete && <p className="hint">{t("Choose a crop for every year in your rotation to compare.")}</p>}
+          </div>
           {error && (
             <div className="error-card" role="alert">
               <p>{error}</p>
@@ -759,7 +980,12 @@ export default function App() {
                       key={sec.id}
                       href={`#${sec.id}`}
                       className={activeSection === sec.id ? "nav-pill active" : "nav-pill"}
-                      onClick={() => {
+                      onClick={(e) => {
+                        if (sec.id === "sec-seasons") {
+                          e.preventDefault();
+                          openMoreSection("sec-seasons");
+                          return;
+                        }
                         if (sec.id === "sec-more" && moreRef.current) moreRef.current.open = true;
                         setActiveSection(sec.id);
                       }}
@@ -790,6 +1016,7 @@ export default function App() {
                       newCrops={topNewCrops}
                       checks={topAlternative ? (uniqueChecks.get(topAlternative.id) ?? []) : []}
                       onSeeWhy={seeWhy}
+                      onSeeSeasons={() => openMoreSection("sec-seasons")}
                     />
                   )}
                 </section>
@@ -806,16 +1033,19 @@ export default function App() {
                     irrigated={irrigated}
                     ruledOut={excludedCrops.map((k) => cropNames[k] ?? k)}
                     numbersSource={result.economics ? numbersSource(result.economics, Object.keys(ownNumbers).length) : undefined}
+                    numbersOpen={numbersOpen}
                     onOpen={openControl}
                   />
-                  {result.economics && <YourNumbers economics={result.economics} onChange={typeNumbers} />}
+                  {result.economics && numbersOpen && (
+                    <YourNumbers economics={result.economics} typed={typedNumbers} onChange={typeNumbers} />
+                  )}
                   <RotationList
                     strategies={shownStrategies}
                     weights={result.weights}
                     currency={result.economics?.currency}
                     irrigated={irrigated}
                     selectedId={selectedStrategies[0]?.id ?? null}
-                    onSelectStrategy={selectDetailStrategy}
+                    onSelectStrategy={seeWhy}
                   />
                   <details className="all-scores">
                     <summary>{t("Show all scores")}</summary>
@@ -840,6 +1070,11 @@ export default function App() {
                         optionPrefix={alternativeIndexMap.get(s.id)}
                         baselineScores={baselineStrategy?.scores}
                         localChecks={uniqueChecks.get(s.id)}
+                        isComparedIn3D={s.id === highlightedStrategyId}
+                        onSelectFor3D={(id) => {
+                          selectDetailStrategy(id);
+                          openMoreSection("sec-seasons");
+                        }}
                         cropQuestions={cropQuestions(s)}
                         onCropAnswer={(key, canGrow) =>
                           canGrow ? setConfirmedCrops((prev) => [...prev, key]) : ruleOutCrop(key)

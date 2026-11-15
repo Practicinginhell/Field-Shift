@@ -356,11 +356,11 @@ export function computeFittedCamera(
       // Scale distance and elevation together so wide bands fit without leaving a dark bottom slab.
       // The plots' near edge is half a plot closer than their centre, and it has to fit too.
       const d = Math.max(7.9, distForWidth * 1.04 + PLOT_SPAN / 2);
-      // Low enough that the horizon, woodland trees, and sky show clearly above any plot count.
-      const y = Math.max(2.6, d * 0.34);
+      // Low enough that the horizon, woodland trees, barn silhouette, clouds, and sun show clearly above any plot count.
+      const y = Math.max(2.4, d * 0.27);
       return {
         pos: [0, y, d],
-        target: [0, -0.05, 0],
+        target: [0, 0.14, 0],
       };
     }
   }

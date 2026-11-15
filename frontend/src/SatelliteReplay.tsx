@@ -231,7 +231,7 @@ export default function SatelliteReplay({ field, conditions, latitude, cropNames
       </div>
 
       <details className="worked-out" onToggle={(e) => setShowWorking(e.currentTarget.open)}>
-        <summary>{t("How this was worked out — satellite rules, model checks, and limits")}</summary>
+        <summary>{t("How this was worked out: satellite rules, model checks, and limits")}</summary>
         <div className="worked-out-body">
           <p className="hint">
             {t(

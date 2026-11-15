@@ -20,11 +20,12 @@ from app.models import (
     CropHistory,
     CropHistoryYear,
     CropOption,
+    LocateResult,
     ObservedField,
 )
 from app.observed import find_observed, satellite_evidence
 from app.rotation import analyze
-from app.sources import aafc, cdl, power, ssurgo
+from app.sources import aafc, cdl, nominatim, power, ssurgo
 
 log = logging.getLogger(__name__)
 if env_file := os.environ.get("ENV_FILE"):  # set by ./scripts/dev; tests leave it unset
@@ -39,6 +40,26 @@ app = FastAPI(title="Crop rotation decision support", version=__version__)
 def health() -> dict[str, str]:
     """Report that the API is up, and which version is running."""
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/locate")
+def locate_field(q: str = Query(min_length=2, max_length=120)) -> LocateResult:
+    """Resolve a town, postal code, or place name to coordinates via Nominatim."""
+    clean = " ".join(q.strip().split())
+    if len(clean) < 2:
+        raise HTTPException(status_code=422, detail="Query must be at least 2 characters")
+    try:
+        match = nominatim.search_place(clean)
+    except httpx2.HTTPError as exc:
+        log.warning("Nominatim lookup failed for %r: %s", clean, exc)
+        raise HTTPException(status_code=502, detail="Place lookup service unavailable") from exc
+    if match is None:
+        raise HTTPException(status_code=404, detail="No matching place found")
+    return LocateResult(
+        latitude=match.latitude,
+        longitude=match.longitude,
+        display_name=match.display_name,
+    )
 
 
 @app.get("/api/crops")

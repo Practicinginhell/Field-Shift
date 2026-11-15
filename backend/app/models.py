@@ -299,3 +299,9 @@ class ObservedField(BaseModel):
     crop_model: CropModel | None = None
     series: dict[str, dict] = {}
     """Monthly series for the SI step: {"modis_ndvi": {"start": "2000-01", "values": [...]}}."""
+
+
+class LocateResult(BaseModel):
+    latitude: float
+    longitude: float
+    display_name: str

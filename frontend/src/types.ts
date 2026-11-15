@@ -202,3 +202,9 @@ export interface ObservedField {
   methods: MethodScore[];
   crop_model?: CropModel | null;
 }
+
+export interface LocateResult {
+  latitude: number;
+  longitude: number;
+  display_name: string;
+}

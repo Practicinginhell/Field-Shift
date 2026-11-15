@@ -77,7 +77,8 @@ export default function SeasonView({
   const steps = years * 12;
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(() => !prefersReducedMotion());
-  const [cameraView, setCameraView] = useState<CameraView>("overview");
+  // Soil & roots first: living roots against bare soil is the picture that tells the story.
+  const [cameraView, setCameraView] = useState<CameraView>("roots");
   const [fitVersion, setFitVersion] = useState(0);
   const anchors = useRef<(HTMLElement | null)[]>([]);
 
@@ -166,8 +167,8 @@ export default function SeasonView({
       <div className="season-stage">
         <Canvas
           shadows="soft"
-          dpr={[1, 1.5]}
-          gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.06 }}
+          dpr={[1, 2]}
+          gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.08 }}
           camera={{ position: [0, 6.8, 11.8], fov: 45 }}
           fallback={<p className="hint">{t("The 3D view needs WebGL, which this browser does not offer.")}</p>}
         >
@@ -217,7 +218,13 @@ export default function SeasonView({
                 type="button"
                 className={active ? "secondary active" : "secondary"}
                 aria-pressed={active}
-                onClick={() => jumpTo(m.step)}
+                onClick={() => {
+                  jumpTo(m.step);
+                  if (m.kind === "roots" && cameraView !== "roots") {
+                    setCameraView("roots");
+                    setFitVersion((v) => v + 1);
+                  }
+                }}
               >
                 {m.label}{" "}
                 <span className="key-moment-when">

@@ -214,13 +214,14 @@ EXACT = {
         "d'observations satellitaires de ce champ."
     ),
     "Crop water use uses general crop coefficients (FAO-56).": (
-        "Les besoins en eau des cultures utilisent des coefficients généraux (FAO-56)."
+        "Les besoins en eau des cultures reposent sur des coefficients généraux (FAO-56)."
     ),
     "Local varieties and planting dates change it.": (
         "Les variétés et les dates de semis locales les modifient."
     ),
     "Market suitability uses a general market class, not your local buyers.": (
-        "Les débouchés utilisent une classe de marché générale, pas vos acheteurs locaux."
+        "L'évaluation des débouchés repose sur une catégorie de marché générale, pas sur vos "
+        "acheteurs locaux."
     ),
     "Weather comes from a NASA POWER grid cell about 50 km across.": (
         "La météo vient d'une cellule NASA POWER d'environ 50 km de côté."
@@ -273,7 +274,7 @@ EXACT = {
     ),
     "Costs are the OMAFA budget's costs before land: seed, fertilizer, chemicals, "
     "machinery at custom rates, drying, insurance, interest and marketing.": (
-        "Les coûts sont ceux du budget du MAAO avant la terre : semences, engrais, produits "
+        "Les coûts sont ceux du budget du MAAAO avant la terre : semences, engrais, produits "
         "phytosanitaires, machinerie à forfait, séchage, assurance, intérêts et mise en marché."
     ),
     "Land rent and farm overhead are not included.": (
@@ -346,14 +347,14 @@ PATTERNS = [
     ),
     (
         "About {d} a year brings heavy rain (25 mm or more), most often in {m}.",
-        "Environ {d} par an : fortes pluies (25 mm ou plus), surtout en {m}.",
+        "Environ {d} par an apporte de fortes pluies (25 mm ou plus), surtout en {m}.",
     ),
     (
         "About {d} a year bring heavy rain (25 mm or more), most often in {m}.",
-        "Environ {d} par an : fortes pluies (25 mm ou plus), surtout en {m}.",
+        "Environ {d} par an apportent de fortes pluies (25 mm ou plus), surtout en {m}.",
     ),
-    ("About {d} a year reaches 35 °C or more.", "Environ {d} par an à 35 °C ou plus."),
-    ("About {d} a year reach 35 °C or more.", "Environ {d} par an à 35 °C ou plus."),
+    ("About {d} a year reaches 35 °C or more.", "Environ {d} par an atteint 35 °C ou plus."),
+    ("About {d} a year reach 35 °C or more.", "Environ {d} par an atteignent 35 °C ou plus."),
     (
         "The last 10 years were {x}% {w}, with daily highs {t} °C {h}, than the 10 years before.",
         "Les 10 dernières années ont été plus {w} de {x} %, avec des maximums quotidiens plus "
@@ -377,15 +378,15 @@ PATTERNS = [
         "sur ces points.",
     ),
     (
-        "Replaces a repeated {a} year with {b} with winter rye cover.",
-        "Remplace une année répétée de {a} par {b} avec un couvert de seigle d'automne.",
+        "Replaces a repeated {a} year with {le_b} with winter rye cover.",
+        "Remplace une année répétée de {a} par {le_b} avec un couvert de seigle d'automne.",
     ),
-    ("Replaces a repeated {a} year with {b}.", "Remplace une année répétée de {a} par {b}."),
+    ("Replaces a repeated {a} year with {le_b}.", "Remplace une année répétée de {a} par {le_b}."),
     (
-        "Swaps {a} for {b} with winter rye cover.",
-        "Remplace {a} par {b} avec un couvert de seigle d'automne.",
+        "Swaps {le_a} for {le_b} with winter rye cover.",
+        "Remplace {le_a} par {le_b} avec un couvert de seigle d'automne.",
     ),
-    ("Swaps {a} for {b}.", "Remplace {a} par {b}."),
+    ("Swaps {le_a} for {le_b}.", "Remplace {le_a} par {le_b}."),
     (
         "Keeps your current crops and adds a year of {a} with winter rye cover.",
         "Garde vos cultures actuelles et ajoute une année de {a} avec un couvert de seigle "
@@ -408,11 +409,11 @@ PATTERNS = [
         "Adds organic matter: about {a} months of living cover a year (now {b}), and more "
         "deep-rooted years.",
         "Ajoute de la matière organique : environ {a} mois de couvert vivant par an "
-        "(maintenant {b}), et plus d'années à racines profondes.",
+        "(actuellement {b}), et plus d'années à racines profondes.",
     ),
     (
         "Fixes more nitrogen: {a} of {b} years with a legume (now {c} of {d}).",
-        "Fixe plus d'azote : {a} années sur {b} avec une légumineuse (maintenant {c} sur {d}).",
+        "Fixe plus d'azote : {a} années sur {b} avec une légumineuse (actuellement {c} sur {d}).",
     ),
     (
         "Keeps the soil covered for about {a} months a year instead of {b}, including more of "
@@ -443,9 +444,9 @@ PATTERNS = [
     ),
     # Checks
     (
-        "This area averages {d} a year at 35 °C or more, and {c} can lose yield in the heat.",
-        "Ce secteur compte en moyenne {d} par an à 35 °C ou plus, et la chaleur peut réduire "
-        "le rendement de cette culture ({c}).",
+        "This area averages {d} a year at 35 °C or more, and {le_c} can lose yield in the heat.",
+        "Ce secteur compte en moyenne {d} par an à 35 °C ou plus, et {le_c} peut perdre du "
+        "rendement à la chaleur.",
     ),
     (
         "New crops ({c}) may need different equipment, seed or buyers.",
@@ -454,7 +455,7 @@ PATTERNS = [
     ),
     (
         "In a typical year rain and stored soil water fall about {a} mm short of crop use.",
-        "Une année typique, la pluie et l'eau stockée dans le sol manquent d'environ {a} mm "
+        "En année typique, la pluie et l'eau stockée dans le sol manquent d'environ {a} mm "
         "pour couvrir les besoins des cultures.",
     ),
     (
@@ -516,13 +517,35 @@ _RULES = [(_compile(en), fr_) for en, fr_ in PATTERNS]
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\d])")
 
 
+_FEMININE = {"luzerne", "jachère"}
+
+
+def _with_article(crop: str) -> str:
+    """ "blé de printemps" → "le blé de printemps", "avoine" → "l'avoine"."""
+    first = crop.split()[0].lower()
+    if first[0] in "aeiouyhéèêâîôû":
+        return f"l'{crop}"
+    return f"{'la' if first in _FEMININE else 'le'} {crop}"
+
+
+def _value(name: str, text: str) -> str:
+    """A placeholder's value in French. `le_*` placeholders are crop names that take an
+    article; `g` is the list of goals after "tenez à", which repeats the "à"."""
+    value = _val(text)
+    if name.startswith("le_"):
+        return _with_article(value)
+    if name == "g":
+        return re.sub(r"(, | et )", r"\1à ", value)
+    return value
+
+
 def _sentence(s: str) -> str | None:
     if s in EXACT:
         return EXACT[s]
     for rx, fr_ in _RULES:
         m = rx.fullmatch(s)
         if m:
-            out = fr_.format(**{k: _val(v) for k, v in m.groupdict().items()})
+            out = fr_.format(**{k: _value(k, v) for k, v in m.groupdict().items()})
             return re.sub(r"(?<=\.)\.$", "", out)  # "oct." ending a sentence: one period
     return None
 
@@ -641,7 +664,7 @@ TEST_NOTE_FR = {
     "Labels are AAFC's crop map, itself a model's output.": (
         "Choisi par validation croisée (une saison laissée de côté à la fois) sur 2019–2022, "
         "puis testé une seule fois sur 2023–2024 dans des blocs de 3 km jamais utilisés pour "
-        "l'entraînement, est de l'Ontario (tuile HLS T18TVR). Les étiquettes viennent de la "
+        "l'entraînement, dans l'Est de l'Ontario (tuile HLS T18TVR). Les étiquettes viennent de la "
         "carte des cultures d'AAC, elle-même produite par un modèle."
     ),
 }

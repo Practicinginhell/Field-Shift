@@ -337,11 +337,60 @@ h2 {
 }
 
 .map {
-  height: 270px;
+  height: 215px;
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+
+.field-locator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: var(--space-2);
+}
+
+.field-locator input[type="search"] {
+  flex: 1 1 13rem;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.field-locator input[type="search"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+button.secondary.locate-find-btn,
+button.secondary.locate-gps-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 38px;
+  padding: 0.4rem 0.72rem;
+  font-size: 0.84rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .presets {
@@ -539,6 +588,12 @@ button.link {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--text);
+}
+
+.status-box.is-error {
+  border-color: color-mix(in srgb, var(--warn-text) 35%, transparent);
+  background: var(--warn-bg);
+  color: var(--warn-text);
 }
 
 .rotation-editor ol {
@@ -1094,6 +1149,41 @@ input[type="range"]::-moz-range-thumb {
 .excluded[open] summary {
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface-elevated));
+}
+
+.priorities-disclosure {
+  margin: 0 0 var(--space-3);
+}
+
+.priorities-disclosure-body {
+  padding: var(--space-3);
+}
+
+.disclosure-hint {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.inputs-cta-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  margin: var(--space-4) calc(var(--space-4) * -1) calc(var(--space-4) * -1);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 84%, transparent) 0%, var(--panel) 26%);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.inputs-cta-bar button.primary {
+  margin-top: 0;
+}
+
+.inputs-cta-bar .hint {
+  margin: var(--space-2) 0 0;
+  text-align: center;
 }
 
 .excluded-crops {
@@ -2351,6 +2441,20 @@ footer {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: hidden;
   background: #cfe3f2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.season-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 18px 28px -18px rgba(17, 42, 68, 0.22),
+    inset 0 -22px 32px -18px rgba(15, 28, 20, 0.22),
+    inset 20px 0 32px -24px rgba(15, 28, 20, 0.16),
+    inset -20px 0 32px -24px rgba(15, 28, 20, 0.16);
 }
 
 .replay .season-stage {
@@ -2392,15 +2496,16 @@ footer {
 
 .scene-tag {
   white-space: nowrap;
-  padding: 0.16rem 0.52rem;
+  padding: 0.18rem 0.56rem;
   border-radius: var(--radius-pill);
   background: var(--glass-bg);
   color: var(--glass-text);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px) saturate(1.2);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(15, 28, 20, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   font-size: 0.76rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
   pointer-events: none;
 }
 
@@ -2418,10 +2523,10 @@ footer {
 }
 
 .stage-tags.is-highlighted .scene-tag.role {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent) 0%, #2b6f47 100%);
+  border-color: rgba(229, 199, 124, 0.78);
   color: var(--accent-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 3px 12px rgba(28, 92, 56, 0.28), 0 0 0 2px rgba(229, 199, 124, 0.24);
 }
 
 .scene-tag.warn {
@@ -3181,10 +3286,17 @@ footer {
 
   .sticky-results-bar {
     position: static;
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .map {
+    height: 185px;
   }
 
   .summary-bar {
     flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
   button.secondary.summary-edit-btn {
@@ -3324,8 +3436,9 @@ footer {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Four plots side by side set the scale on a narrow screen: a taller stage only adds sky. */
   .season-stage {
-    height: 255px;
+    height: 215px;
   }
 
   .replay .season-stage {
@@ -3356,8 +3469,24 @@ footer {
     overflow-x: auto;
   }
 
+  /* No room for crop names beside the rows: list the year's crops under its title
+     instead, so all twelve months fit. */
   .row-crop {
-    max-width: 72px;
+    display: none;
+  }
+
+  .timeline-year-head {
+    flex-wrap: wrap;
+  }
+
+  .timeline-year-crops.visually-hidden {
+    position: static;
+    order: 3;
+    flex-basis: 100%;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
 
   .scores div {
@@ -3593,6 +3722,16 @@ button.secondary.your-call-btn .your-call-icon {
   justify-items: start;
 }
 
+.your-numbers-inline .your-numbers-body {
+  padding: var(--space-3);
+}
+
+.your-numbers-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .your-numbers-body .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -3698,6 +3837,13 @@ button.secondary.your-call-btn .your-call-icon {
   margin: var(--space-2, 0.6rem) 0 0;
   font-weight: 600;
   color: var(--accent, #1b6538);
+}
+
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .more-detail > summary {

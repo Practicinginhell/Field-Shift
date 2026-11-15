@@ -75,13 +75,24 @@ test("offers 3D camera view presets and updates active state when clicked", () =
   const roots = screen.getByRole("button", { name: "Soil & roots" });
   const canopy = screen.getByRole("button", { name: "Top-down canopy" });
 
-  expect(overview.getAttribute("aria-pressed")).toBe("true");
-  expect(roots.getAttribute("aria-pressed")).toBe("false");
-  expect(canopy.getAttribute("aria-pressed")).toBe("false");
-
-  fireEvent.click(roots);
+  // Soil & roots first: living roots against bare soil is the picture that tells the story.
   expect(roots.getAttribute("aria-pressed")).toBe("true");
   expect(overview.getAttribute("aria-pressed")).toBe("false");
+  expect(canopy.getAttribute("aria-pressed")).toBe("false");
+
+  fireEvent.click(overview);
+  expect(overview.getAttribute("aria-pressed")).toBe("true");
+  expect(roots.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("jumping to the living-roots month shows the Soil & roots view", () => {
+  render(<SeasonView strategies={RESPONSE.strategies} conditions={RESPONSE.conditions} latitude={RESPONSE.latitude} cropNames={cropNames} />);
+
+  const canopy = screen.getByRole("button", { name: "Top-down canopy" });
+  fireEvent.click(canopy);
+  fireEvent.click(screen.getByRole("button", { name: /^Living roots where yours has none/ }));
+  expect(screen.getByRole("button", { name: "Soil & roots" }).getAttribute("aria-pressed")).toBe("true");
+  expect(canopy.getAttribute("aria-pressed")).toBe("false");
 });
 
 test("displays active FAO-56 root depth and nitrogen fixing status in scoreboards", () => {
@@ -149,9 +160,9 @@ test("shows each plot's rain minus crop water use for the month in view", () => 
 test("says the soil is drawn deeper than scale in the Soil & roots view only", () => {
   render(<SeasonView strategies={RESPONSE.strategies} conditions={RESPONSE.conditions} latitude={RESPONSE.latitude} cropNames={cropNames} />);
 
-  expect(screen.queryByText(/deeper than true scale/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Soil & roots" }));
   expect(screen.getByText(/drawn 3× deeper than true scale/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+  expect(screen.queryByText(/deeper than true scale/)).toBeNull();
 });
 
 test("describes each rotation's month in plain words, with the figures one click away", () => {

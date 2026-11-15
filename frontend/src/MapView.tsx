@@ -3,6 +3,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef } from "react";
 
+import { t } from "./i18n";
+
 // MapLibre 6 looks for its worker next to its own script, which a production bundle
 // does not copy. Bundle the worker as a file and point MapLibre at it.
 setWorkerUrl(workerUrl);
@@ -56,10 +58,10 @@ export default function MapView({ latitude, longitude, onPick }: Props) {
   useEffect(() => {
     marker.current?.setLngLat([longitude, latitude]);
     const m = map.current;
-    if (m && m.getCenter().distanceTo(new LngLat(longitude, latitude)) > 20000) {
-      m.flyTo({ center: [longitude, latitude], zoom: 11 });
+    if (m && m.getCenter().distanceTo(new LngLat(longitude, latitude)) > 5000) {
+      m.flyTo({ center: [longitude, latitude], zoom: 12 });
     }
   }, [latitude, longitude]);
 
-  return <div ref={container} className="map" aria-label="Map: click to choose your field" />;
+  return <div ref={container} className="map" aria-label={t("Map: click to choose your field")} />;
 }

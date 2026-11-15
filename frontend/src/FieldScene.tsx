@@ -33,6 +33,7 @@ import {
   type InstancedMesh,
   MeshStandardMaterial,
   Object3D,
+  type Points,
   Quaternion,
   RepeatWrapping,
   ShaderMaterial,
@@ -933,6 +934,35 @@ function createSoilTexture(): CanvasTexture | null {
   return texture;
 }
 
+/** Procedural weathered oak timber grain texture for specimen pit framing beams and marker posts. */
+function createTimberTexture(): CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#6e5640";
+  ctx.fillRect(0, 0, 256, 128);
+
+  for (let i = 0; i < 140; i++) {
+    const y = ((Math.sin(i * 19.31) * 43758.54) % 1 + 1) % 1;
+    const h = 1.5 + (i % 4);
+    const tone = i % 3 === 0 ? "rgba(44, 31, 20, 0.28)" : i % 2 === 0 ? "rgba(148, 118, 86, 0.22)" : "rgba(72, 52, 36, 0.2)";
+    ctx.fillStyle = tone;
+    ctx.fillRect(0, y * 124, 256, h);
+  }
+  ctx.fillStyle = "rgba(32, 21, 14, 0.38)";
+  ctx.fillRect(0, 62, 256, 2);
+
+  const texture = new CanvasTexture(canvas);
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.repeat.set(4, 1);
+  return texture;
+}
+
 const DEPTH_MARKS_M = [0.5, 1.0, 1.5];
 const LABEL_TEXTURES = new Map<string, CanvasTexture | null>();
 
@@ -1030,16 +1060,19 @@ export interface FoliageUniforms {
   uWindStrength: { value: number };
   uSubsurfaceColor: { value: Color };
   uFrost: { value: number };
+  uWetness?: { value: number };
 }
 
-/** Enhances MeshStandardMaterial with GPU multi-frequency wind waves, sky-biased normals, canopy AO, and backlit SSS. */
-export function applyFoliageShader(material: MeshStandardMaterial, uniforms: FoliageUniforms, tag = "foliage-v1"): void {
+/** Enhances MeshStandardMaterial with GPU multi-frequency wind waves, sky-biased normals, canopy AO, wet rainwater film sheen, and backlit SSS. */
+export function applyFoliageShader(material: MeshStandardMaterial, uniforms: FoliageUniforms, tag = "foliage-v2"): void {
+  const wetnessUniform = uniforms.uWetness ?? { value: 0 };
   material.customProgramCacheKey = () => `${tag}-${material.vertexColors ? 1 : 0}`;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uWindStrength = uniforms.uWindStrength;
     shader.uniforms.uSubsurfaceColor = uniforms.uSubsurfaceColor;
     shader.uniforms.uFrost = uniforms.uFrost;
+    shader.uniforms.uWetness = wetnessUniform;
 
     shader.vertexShader = injectAfter(
       shader.vertexShader,
@@ -1090,6 +1123,7 @@ transformed.z += windDisp * 0.48;
       `
 uniform vec3 uSubsurfaceColor;
 uniform float uFrost;
+uniform float uWetness;
 varying float vPlantHeight;
 varying float vInstanceHash;
 `,
@@ -1100,7 +1134,15 @@ varying float vInstanceHash;
       "#include <color_fragment>",
       `
 float canopyAo = mix( 0.62, 1.12, smoothstep( 0.0, 0.85, vPlantHeight ) );
-diffuseColor.rgb *= canopyAo * ( 0.94 + vInstanceHash * 0.12 );
+diffuseColor.rgb *= canopyAo * ( 0.94 + vInstanceHash * 0.12 ) * mix( 1.0, 0.80, saturate( uWetness ) * 0.65 );
+`,
+    );
+
+    shader.fragmentShader = injectAfter(
+      shader.fragmentShader,
+      "#include <roughnessmap_fragment>",
+      `
+roughnessFactor = clamp( mix( roughnessFactor, 0.18, saturate( uWetness ) * 0.85 ), 0.14, 0.98 );
 `,
     );
 
@@ -1113,9 +1155,14 @@ diffuseColor.rgb *= canopyAo * ( 0.94 + vInstanceHash * 0.12 );
   float backDot = saturate( dot( -geometryViewDir, halfLight ) );
   float backScatter = backDot * backDot * sqrt( max( backDot, 1e-5 ) );
   float sssMask = smoothstep( 0.15, 0.95, vPlantHeight );
-  vec3 sssRadiance = backScatter * sssMask * uSubsurfaceColor * directionalLights[ 0 ].color * 0.55;
+  vec3 sssRadiance = backScatter * sssMask * uSubsurfaceColor * directionalLights[ 0 ].color * mix( 0.55, 0.28, saturate( uWetness ) );
   reflectedLight.directDiffuse += sssRadiance;
 #endif
+if ( uWetness > 0.05 ) {
+  float wetRimBase = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
+  float wetSheen = pow( max( wetRimBase, 1e-4 ), 2.2 ) * smoothstep( -0.1, 0.72, geometryNormal.y ) * saturate( uWetness );
+  totalEmissiveRadiance += vec3( 0.72, 0.84, 0.96 ) * wetSheen * 0.26;
+}
 if ( uFrost > 0.0 ) {
   float frostRimBase = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
   float frostFresnel = frostRimBase * frostRimBase;
@@ -1132,18 +1179,21 @@ export interface SoilUniforms {
   uHorizon: { value: number };
   uSnow?: { value: number };
   uFrost?: { value: number };
+  uTime?: { value: number };
 }
 
-/** Enhances soil and cutaway faces with 3D crumbs, organic horizon waves, wetness PBR roughness, selective ridge frost, and top-only winter snow blanketing. */
+/** Enhances soil and cutaway faces with 3D crumbs, organic horizon waves, wetness PBR roughness, animated puddle ripples, selective ridge frost, and top-only winter snow blanketing. */
 export function applySoilShader(material: MeshStandardMaterial, uniforms: SoilUniforms): void {
   const snowUniform = uniforms.uSnow ?? { value: 0 };
   const frostUniform = uniforms.uFrost ?? { value: 0 };
-  material.customProgramCacheKey = () => "soil-triplanar-v3";
+  const timeUniform = uniforms.uTime ?? { value: 0 };
+  material.customProgramCacheKey = () => "soil-triplanar-v5";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWetness = uniforms.uWetness;
     shader.uniforms.uHorizon = uniforms.uHorizon;
     shader.uniforms.uSnow = snowUniform;
     shader.uniforms.uFrost = frostUniform;
+    shader.uniforms.uTime = timeUniform;
 
     shader.vertexShader = injectAfter(
       shader.vertexShader,
@@ -1180,8 +1230,24 @@ uniform float uWetness;
 uniform float uHorizon;
 uniform float uSnow;
 uniform float uFrost;
+uniform float uTime;
 varying vec3 vSoilWorldPos;
 varying vec3 vSoilWorldNormal;
+
+float soilRippleHash( vec2 p ) {
+  return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
+}
+
+float soilPuddleRipple( vec2 xz, float time ) {
+  vec2 cell = floor( xz * 3.1 );
+  vec2 f = fract( xz * 3.1 ) - 0.5;
+  float seed = soilRippleHash( cell );
+  vec2 jitter = vec2( soilRippleHash( cell + 4.3 ) - 0.5, soilRippleHash( cell + 9.7 ) - 0.5 ) * 0.42;
+  float phase = fract( time * ( 1.45 + seed * 0.65 ) + seed * 7.13 );
+  float d = length( f - jitter );
+  float rad = phase * 0.44;
+  return exp( -pow( ( d - rad ) * 32.0, 2.0 ) ) * ( 1.0 - phase );
+}
 
 float soilHash3( vec3 p ) {
   p = fract( p * 0.3183099 + 0.1 );
@@ -1281,10 +1347,30 @@ float channelWet = 0.0;
 #endif
 float topSnowRoughMask = smoothstep( 0.32, 0.74, vSoilWorldNormal.y ) * uSnow;
 float microRoughNoise = soilNoise3( vSoilWorldPos * 16.0 );
-roughnessFactor = mix( roughnessFactor, 0.66, wetGloss * horizonMask );
-roughnessFactor = mix( roughnessFactor, 0.24, wetGloss * horizonMask * channelWet );
-roughnessFactor = mix( roughnessFactor, 0.44 + microRoughNoise * 0.38, topSnowRoughMask );
-roughnessFactor = clamp( roughnessFactor + ( microRoughNoise - 0.5 ) * 0.14, 0.22, 0.98 );
+roughnessFactor = mix( roughnessFactor, 0.58, wetGloss * horizonMask );
+roughnessFactor = mix( roughnessFactor, 0.09, wetGloss * horizonMask * channelWet );
+roughnessFactor = mix( roughnessFactor, 0.38 + microRoughNoise * 0.36, topSnowRoughMask );
+roughnessFactor = clamp( roughnessFactor + ( microRoughNoise - 0.5 ) * 0.14, 0.08, 0.98 );
+`,
+    );
+
+    shader.fragmentShader = injectAfter(
+      shader.fragmentShader,
+      "#include <lights_fragment_begin>",
+      `
+float snowFaceMask = smoothstep( 0.36, 0.78, vSoilWorldNormal.y ) * saturate( uSnow );
+float flakeNoise = soilNoise3( vSoilWorldPos * 42.0 );
+float viewAlign = pow( abs( sin( dot( vSoilWorldPos.xz, vec2( 7.3, 11.1 ) ) + length( geometryViewDir ) * 0.45 ) ), 6.0 );
+float snowGlint = smoothstep( 0.78, 0.96, flakeNoise ) * viewAlign * snowFaceMask;
+totalEmissiveRadiance += vec3( 0.86, 0.94, 1.0 ) * snowGlint * 0.55;
+
+float topPuddleChannel = 0.0;
+#ifdef USE_COLOR
+  topPuddleChannel = 1.0 - smoothstep( 0.56, 0.80, vColor.r );
+#endif
+float topPuddleMask = smoothstep( 0.42, 0.80, vSoilWorldNormal.y ) * ( 1.0 - step( 0.5, uHorizon ) ) * ( 1.0 - saturate( uSnow ) ) * saturate( uWetness ) * topPuddleChannel;
+float rippleRing = max( soilPuddleRipple( vSoilWorldPos.xz * 1.18, uTime ), soilPuddleRipple( vSoilWorldPos.xz * 1.48 + vec2( 1.9, -2.4 ), uTime + 0.37 ) );
+totalEmissiveRadiance += vec3( 0.82, 0.91, 1.0 ) * rippleRing * topPuddleMask * 0.58;
 `,
     );
   };
@@ -1294,19 +1380,25 @@ export interface GroundUniforms {
   uSnow: { value: number };
   uFrost?: { value: number };
   uDryness: { value: number };
+  uWetness?: { value: number };
+  uTime?: { value: number };
   uTrenchHalfWidth: { value: number };
   uTrenchFrontZ: { value: number };
   uPlotHalfZ: { value: number };
 }
 
-/** Upgrades surrounding field apron and rolling hills with crisp meadow turf blades, patchwork rural parcels, selective morning frost, snow drifts, and pit contact AO. */
+/** Upgrades surrounding field apron and rolling hills with crisp meadow turf blades, patchwork rural parcels, selective morning frost, snow drifts & glints, animated rainwater puddle ripples, and pit contact AO. */
 export function applyGroundShader(material: MeshStandardMaterial, uniforms: GroundUniforms): void {
   const frostUniform = uniforms.uFrost ?? { value: 0 };
-  material.customProgramCacheKey = () => "ground-terrain-v3";
+  const wetnessUniform = uniforms.uWetness ?? { value: 0 };
+  const timeUniform = uniforms.uTime ?? { value: 0 };
+  material.customProgramCacheKey = () => "ground-terrain-v5";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSnow = uniforms.uSnow;
     shader.uniforms.uFrost = frostUniform;
     shader.uniforms.uDryness = uniforms.uDryness;
+    shader.uniforms.uWetness = wetnessUniform;
+    shader.uniforms.uTime = timeUniform;
     shader.uniforms.uTrenchHalfWidth = uniforms.uTrenchHalfWidth;
     shader.uniforms.uTrenchFrontZ = uniforms.uTrenchFrontZ;
     shader.uniforms.uPlotHalfZ = uniforms.uPlotHalfZ;
@@ -1337,6 +1429,8 @@ vGroundWorldNormal = normalize( mat3( modelMatrix ) * objectNormal );
 uniform float uSnow;
 uniform float uFrost;
 uniform float uDryness;
+uniform float uWetness;
+uniform float uTime;
 uniform float uTrenchHalfWidth;
 uniform float uTrenchFrontZ;
 uniform float uPlotHalfZ;
@@ -1435,24 +1529,30 @@ valleyColor *= hillContour;
 
 vec3 dryMeadow = mix( valleyColor, vec3( 0.42, 0.36, 0.19 ), uDryness * 0.36 * ( 0.65 + 0.35 * gMacro ) );
 
+// Damp rain-darkened turf & low rainwater puddles before frost/snow freeze
+float rainPuddleNoise = fbmGround( vGroundWorldPos.xz * 0.58 + vec2( -1.3, 3.7 ) );
+float rainPuddle = smoothstep( 0.47, 0.72, rainPuddleNoise ) * saturate( uWetness ) * ( 1.0 - saturate( uSnow ) );
+dryMeadow *= mix( 1.0, 0.68, saturate( uWetness ) * ( 0.48 + 0.52 * rainPuddle ) * ( 1.0 - saturate( uSnow ) ) );
+dryMeadow = mix( dryMeadow, dryMeadow * vec3( 0.84, 0.92, 1.02 ) + vec3( 0.03, 0.05, 0.08 ), rainPuddle * 0.42 );
+
 // Subtle cool silvery morning dew/frost glint on turf blades without splotchy white patches.
 float meadowFrostMask = smoothstep( 0.62, 0.92, gFine * 0.4 + gTurfBlade * 0.6 ) * saturate( uFrost );
 vec3 dewFrostTint = dryMeadow * vec3( 1.05, 1.15, 1.32 ) + vec3( 0.09, 0.12, 0.16 );
 dryMeadow = mix( dryMeadow, dewFrostTint, meadowFrostMask * 0.34 );
 
-// Wind-sculpted snow drifts with cool sky hollows, luminous crests, and faint frost-buried parcel contours
+// Wind-sculpted snow drifts with cool azure shadow hollows, crisp luminous ridges, and faint frost-buried parcel contours
 float driftWave = fbmGround( vGroundWorldPos.xz * vec2( 0.14, 0.34 ) + vec2( 2.1, -0.7 ) );
-float slopeLight = saturate( vGroundWorldNormal.z * 0.5 + 0.5 );
-vec3 snowBlanket = mix( vec3( 0.66, 0.77, 0.90 ), vec3( 0.94, 0.97, 1.0 ), smoothstep( 0.20, 0.76, driftWave * 0.68 + slopeLight * 0.32 ) );
-snowBlanket *= mix( 0.94, 1.04, smoothstep( 0.2, 2.8, vGroundWorldPos.y ) );
-snowBlanket = mix( snowBlanket, dryMeadow * 0.72, ruralMask * 0.06 * ( 1.0 - borderMask ) );
+float slopeLight = saturate( vGroundWorldNormal.z * 0.45 + vGroundWorldNormal.x * 0.25 + 0.52 );
+vec3 snowBlanket = mix( vec3( 0.57, 0.70, 0.87 ), vec3( 0.96, 0.985, 1.0 ), smoothstep( 0.16, 0.74, driftWave * 0.66 + slopeLight * 0.34 ) );
+snowBlanket *= mix( 0.92, 1.05, smoothstep( 0.2, 2.8, vGroundWorldPos.y ) );
+snowBlanket = mix( snowBlanket, dryMeadow * 0.70, ruralMask * 0.05 * ( 1.0 - borderMask ) );
 diffuseColor.rgb = mix( dryMeadow, snowBlanket, saturate( uSnow ) );
 
 // Subtle ground contact AO halo bordering the inspection trench & plot perimeter
 float dxPit = abs( vGroundWorldPos.x ) - uTrenchHalfWidth;
 float dzPit = max( -uPlotHalfZ - vGroundWorldPos.z, vGroundWorldPos.z - uTrenchFrontZ );
 float edgeDist = max( dxPit, dzPit );
-float contactAO = mix( 0.80, 1.0, smoothstep( -0.05, 0.88, edgeDist ) );
+float contactAO = mix( 0.76, 1.0, smoothstep( -0.05, 0.92, edgeDist ) );
 diffuseColor.rgb *= contactAO;
 `,
     );
@@ -1462,7 +1562,40 @@ diffuseColor.rgb *= contactAO;
       "#include <roughnessmap_fragment>",
       `
 float snowSparkle = gNoise2( vGroundWorldPos.xz * 2.4 );
-roughnessFactor = clamp( mix( 0.93, 0.40 + snowSparkle * 0.44, saturate( uSnow ) ), 0.35, 0.98 );
+float wetTurfMix = saturate( uWetness ) * ( 1.0 - saturate( uSnow ) );
+float wetPuddleRough = smoothstep( 0.47, 0.72, fbmGround( vGroundWorldPos.xz * 0.58 + vec2( -1.3, 3.7 ) ) );
+float wetTurfBase = mix( 0.88, 0.34, wetTurfMix );
+float greenRough = mix( wetTurfBase, 0.07, wetPuddleRough * wetTurfMix );
+roughnessFactor = clamp( mix( greenRough, 0.34 + snowSparkle * 0.42, saturate( uSnow ) ), 0.07, 0.98 );
+`,
+    );
+
+    shader.fragmentShader = injectAfter(
+      shader.fragmentShader,
+      "#include <lights_fragment_begin>",
+      `
+float crystalCell = gNoise2( vGroundWorldPos.xz * 19.5 );
+float crystalPulse = pow( abs( sin( dot( vGroundWorldPos.xz, vec2( 5.7, 9.3 ) ) + length( geometryViewDir ) * 0.35 ) ), 6.0 );
+float nearFade = 1.0 - smoothstep( 14.0, 56.0, length( vGroundWorldPos.xz ) );
+float snowGlint = smoothstep( 0.80, 0.96, crystalCell ) * crystalPulse * saturate( uSnow ) * nearFade;
+totalEmissiveRadiance += vec3( 0.88, 0.95, 1.0 ) * snowGlint * 0.46;
+
+float groundPuddle = smoothstep( 0.47, 0.72, fbmGround( vGroundWorldPos.xz * 0.58 + vec2( -1.3, 3.7 ) ) ) * saturate( uWetness ) * ( 1.0 - saturate( uSnow ) ) * nearFade;
+vec2 rpCellA = floor( vGroundWorldPos.xz * 1.85 );
+vec2 rpFracA = fract( vGroundWorldPos.xz * 1.85 ) - 0.5;
+float rpSeedA = gHash2( rpCellA );
+vec2 rpJitterA = vec2( gHash2( rpCellA + vec2( 4.1, 1.7 ) ) - 0.5, gHash2( rpCellA + vec2( 8.9, 3.2 ) ) - 0.5 ) * 0.36;
+float rpPhaseA = fract( uTime * ( 1.45 + rpSeedA * 0.65 ) + rpSeedA * 5.9 );
+float rpRingA = exp( -pow( ( length( rpFracA - rpJitterA ) - rpPhaseA * 0.42 ) * 17.5, 2.0 ) ) * ( 1.0 - rpPhaseA );
+
+vec2 rpCellB = floor( vGroundWorldPos.xz * 3.15 + vec2( 3.7, -2.1 ) );
+vec2 rpFracB = fract( vGroundWorldPos.xz * 3.15 + vec2( 3.7, -2.1 ) ) - 0.5;
+float rpSeedB = gHash2( rpCellB );
+vec2 rpJitterB = vec2( gHash2( rpCellB + vec2( 2.3, 6.4 ) ) - 0.5, gHash2( rpCellB + vec2( 5.8, 1.9 ) ) - 0.5 ) * 0.36;
+float rpPhaseB = fract( uTime * ( 1.85 + rpSeedB * 0.75 ) + rpSeedB * 8.3 );
+float rpRingB = exp( -pow( ( length( rpFracB - rpJitterB ) - rpPhaseB * 0.40 ) * 17.5, 2.0 ) ) * ( 1.0 - rpPhaseB );
+float rippleRing = max( rpRingA, rpRingB );
+totalEmissiveRadiance += vec3( 0.78, 0.89, 1.0 ) * rippleRing * groundPuddle * 0.52;
 `,
     );
   };
@@ -1569,9 +1702,9 @@ export interface CloudUniforms {
   uDark: { value: number };
 }
 
-/** Enhances cumulus clouds with animated internal billow shading, cool sky undersides, and subtle sunlit rim light. */
+/** Enhances cumulus clouds with animated internal billow shading, atmospheric slate undersides, and silver/gold sunlit rim light. */
 export function applyCloudShader(material: MeshStandardMaterial, uniforms: CloudUniforms): void {
-  material.customProgramCacheKey = () => "cloud-fresnel-v3";
+  material.customProgramCacheKey = () => "cloud-fresnel-v4";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uDark = uniforms.uDark;
@@ -1631,10 +1764,11 @@ float cloudNoise3( vec3 p ) {
       shader.fragmentShader,
       "#include <color_fragment>",
       `
-float puff = cloudNoise3( vCloudLocalPos * 1.4 + vec3( uTime * 0.06, 0.0, 0.0 ) );
-float bellyShade = smoothstep( -0.35, 0.95, vCloudLocalPos.y );
-vec3 bellyTint = mix( vec3( 0.78, 0.86, 0.95 ), vec3( 0.56, 0.63, 0.73 ), uDark );
-diffuseColor.rgb = mix( bellyTint, diffuseColor.rgb * ( 0.99 + puff * 0.06 ), bellyShade );
+float puff = cloudNoise3( vCloudLocalPos * 1.45 + vec3( uTime * 0.055, 0.0, 0.0 ) );
+float bellyShade = smoothstep( -0.45, 0.95, vCloudLocalPos.y );
+vec3 bellyTint = mix( vec3( 0.70, 0.80, 0.93 ), vec3( 0.44, 0.51, 0.62 ), uDark );
+vec3 sunlitCrown = diffuseColor.rgb * mix( vec3( 1.04, 1.02, 0.98 ), vec3( 0.90, 0.93, 0.97 ), uDark ) * ( 0.96 + puff * 0.12 );
+diffuseColor.rgb = mix( bellyTint, sunlitCrown, bellyShade );
 `,
     );
 
@@ -1643,9 +1777,9 @@ diffuseColor.rgb = mix( bellyTint, diffuseColor.rgb * ( 0.99 + puff * 0.06 ), be
       "#include <lights_fragment_begin>",
       `
 float cloudRimBase = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
-float fresnelRim = pow( max( cloudRimBase, 1e-4 ), 2.6 );
-vec3 rimGlow = mix( vec3( 0.98, 0.99, 1.0 ), vec3( 0.80, 0.86, 0.93 ), uDark );
-totalEmissiveRadiance += rimGlow * fresnelRim * 0.18;
+float fresnelRim = pow( max( cloudRimBase, 1e-4 ), 2.2 );
+vec3 rimGlow = mix( vec3( 1.0, 0.98, 0.92 ), vec3( 0.76, 0.84, 0.94 ), uDark );
+totalEmissiveRadiance += rimGlow * fresnelRim * mix( 0.28, 0.18, uDark );
 `,
     );
   };
@@ -1711,20 +1845,35 @@ float skyFbm( vec2 p ) {
 
 void main() {
   vec3 dir = normalize( vSkyDir );
+  vec3 sunDir = normalize( uSunDir );
   float elev = max( dir.y, 0.0 );
-  float grad = pow( elev, 0.56 );
+  float grad = clamp( pow( elev * 3.6, 0.72 ), 0.0, 1.0 );
   vec3 sky = mix( uHorizon, uZenith, grad );
 
-  float sunCos = max( dot( dir, normalize( uSunDir ) ), 0.0 );
-  float halo = pow( sunCos, 8.0 ) * 0.24 + pow( sunCos, 64.0 ) * 0.16;
-  sky += uSunColor * halo * ( 1.0 - uStorm * 0.82 ) * smoothstep( -0.02, 0.35, dir.y );
+  float sunCos = max( dot( dir, sunDir ), 0.0 );
+  float mieGlow = pow( sunCos, 5.0 ) * 0.26 + pow( sunCos, 28.0 ) * 0.30;
+  float sunCorona = pow( sunCos, 160.0 ) * 0.58;
+  float sunDisc = smoothstep( 0.9982, 0.9994, sunCos );
+  float horizonBand = exp( -max( elev, 0.0 ) * 9.0 ) * pow( sunCos, 2.0 );
+  float skyClear = 1.0 - smoothstep( 0.0, 0.72, uStorm );
+  vec3 warmBandTint = mix( uSunColor, vec3( 1.0, 0.86, 0.66 ), 0.45 );
+
+  sky += uSunColor * mieGlow * skyClear * smoothstep( -0.02, 0.20, dir.y );
+  sky += warmBandTint * horizonBand * 0.18 * skyClear;
+  sky += uSunColor * ( sunCorona + sunDisc * 1.55 ) * skyClear * smoothstep( 0.0, 0.035, dir.y );
 
   vec2 wispUv = dir.xz / max( elev + 0.18, 0.18 ) * 1.45 + vec2( uTime * 0.004, uTime * 0.0015 );
   float wisp = smoothstep( 0.48, 0.86, skyFbm( wispUv ) ) * smoothstep( 0.04, 0.34, elev );
-  vec3 wispTint = mix( vec3( 0.94, 0.97, 1.0 ), vec3( 0.68, 0.74, 0.82 ), uStorm );
-  sky = mix( sky, wispTint, wisp * mix( 0.24, 0.40, uStorm ) );
+  vec3 wispTint = mix( vec3( 0.96, 0.98, 1.0 ), vec3( 0.52, 0.60, 0.69 ), uStorm );
+  sky = mix( sky, wispTint, wisp * mix( 0.26, 0.55, uStorm ) );
 
-  sky = mix( uHorizon, sky, smoothstep( -0.01, 0.035, dir.y ) );
+  // Deep overcast nimbostratus cloud sheet overhead during heavy storms
+  vec2 deckUv = dir.xz / max( elev + 0.22, 0.22 ) * 0.95 + vec2( uTime * 0.009, uTime * 0.003 );
+  float stormDeck = skyFbm( deckUv );
+  vec3 stormCloudCol = mix( vec3( 0.27, 0.34, 0.43 ), vec3( 0.56, 0.64, 0.73 ), smoothstep( 0.25, 0.82, stormDeck ) );
+  sky = mix( sky, stormCloudCol, smoothstep( 0.02, 0.24, elev ) * uStorm * 0.72 );
+
+  sky = mix( uHorizon, sky, smoothstep( -0.01, 0.032, dir.y ) );
   gl_FragColor = vec4( sky, 1.0 );
   #include <colorspace_fragment>
 }
@@ -1930,11 +2079,13 @@ function Plants({
   frame,
   frost,
   storm = false,
+  wetness = 0,
   dense,
 }: {
   frame: PlotFrame;
   frost: boolean;
   storm?: boolean;
+  wetness?: number;
   dense: boolean;
 }) {
   const look = frame.crop ? LOOKS[frame.crop] : undefined;
@@ -1952,6 +2103,7 @@ function Plants({
       uWindStrength: { value: 0.068 },
       uSubsurfaceColor: { value: new Color("#9be04a") },
       uFrost: { value: 0 },
+      uWetness: { value: 0 },
     }),
     [],
   );
@@ -1959,20 +2111,22 @@ function Plants({
   const materials = useMemo(() => {
     const foliage = new MeshStandardMaterial({ color: "#3b8734", roughness: 0.72 });
     const crown = new MeshStandardMaterial({ color: "#c9be6c", roughness: 0.65 });
-    applyFoliageShader(foliage, foliageUniforms, "foliage-v1");
-    applyFoliageShader(crown, foliageUniforms, "foliage-crown-v1");
+    applyFoliageShader(foliage, foliageUniforms, "foliage-v2");
+    applyFoliageShader(crown, foliageUniforms, "foliage-crown-v2");
     return { foliage, crown };
   }, [foliageUniforms]);
 
   useEffect(() => {
     const clearFrost = frost && !storm;
-    // A light rim: rain washes surface frost off foliage; dry mornings get a gentle cool sheen.
+    // Rain washes surface frost off foliage and coats leaves with a glistening water film while buffeting wind gusts slightly harder.
     foliageUniforms.uFrost.value = clearFrost ? 0.35 : 0;
-    foliageUniforms.uWindStrength.value = frame.state === "planted" ? 0.04 : 0.068;
+    foliageUniforms.uWetness!.value = wetness;
+    const baseWind = frame.state === "planted" ? 0.04 : 0.068;
+    foliageUniforms.uWindStrength.value = baseWind * (storm ? 1.38 : 1 + wetness * 0.25);
     foliageUniforms.uSubsurfaceColor.value.set(subsurfaceColor(look, frame, clearFrost));
     if (look) materials.foliage.color.set(plantColor(look, frame, clearFrost));
     if (cColor) materials.crown.color.set(cColor);
-  }, [foliageUniforms, materials, look, frame, frost, storm, cColor]);
+  }, [foliageUniforms, materials, look, frame, frost, storm, wetness, cColor]);
 
   useEffect(
     () => () => {
@@ -2544,6 +2698,7 @@ function createSoilMaterialSet(soilTexture: CanvasTexture | null) {
   const uSurfaceWetness = { value: 0 };
   const uSnow = { value: 0 };
   const uFrost = { value: 0 };
+  const uTime = { value: 0 };
   const makeMat = (
     horizon: number,
     color: string,
@@ -2553,9 +2708,10 @@ function createSoilMaterialSet(soilTexture: CanvasTexture | null) {
     vertexColors = false,
     snow = { value: 0 },
     frost = { value: 0 },
+    time = { value: 0 },
   ) => {
     const m = new MeshStandardMaterial({ color, map, roughness, vertexColors });
-    applySoilShader(m, { uWetness: wetness, uHorizon: { value: horizon }, uSnow: snow, uFrost: frost });
+    applySoilShader(m, { uWetness: wetness, uHorizon: { value: horizon }, uSnow: snow, uFrost: frost, uTime: time });
     return m;
   };
   return {
@@ -2563,7 +2719,8 @@ function createSoilMaterialSet(soilTexture: CanvasTexture | null) {
     uSurfaceWetness,
     uSnow,
     uFrost,
-    horizonA: makeMat(0, "#6e4d31", soilTexture, 0.96, uSurfaceWetness, true, uSnow, uFrost),
+    uTime,
+    horizonA: makeMat(0, "#6e4d31", soilTexture, 0.96, uSurfaceWetness, true, uSnow, uFrost, uTime),
     horizonB: makeMat(1, "#8d613e", soilTexture, 0.95),
     horizonC: makeMat(2, "#675a4e", null, 1),
   };
@@ -2592,6 +2749,7 @@ function Plot({
   // Wetter where the month's rain exceeds what this plot's crop uses, drier where the crop draws more.
   const wet = plotWetness(frame, weather);
   const snow = isSnowWeather(weather);
+  const foliageWetness = snow ? 0 : clamp01((weather.rainMm - 10) / 110 + (storm ? 0.35 : 0));
   const topsoil = useMemo(() => new Color("#6e4d31").lerp(new Color("#362111"), wet * 0.75), [wet]);
   const subsoil = useMemo(() => new Color("#8d613e").lerp(new Color("#593a23"), wet * 0.4), [wet]);
 
@@ -2608,6 +2766,10 @@ function Plot({
     soilMats.horizonA.color.copy(topsoil);
     soilMats.horizonB.color.copy(subsoil);
   }, [soilMats, wet, snow, storm, weather.frost, topsoil, subsoil]);
+
+  useFrame(({ clock }) => {
+    soilMats.uTime.value = clock.elapsedTime;
+  });
 
   useEffect(
     () => () => {
@@ -2670,30 +2832,34 @@ function Plot({
           </mesh>
         </group>
       ))}
-      {/* Highlighted plot plinth collar around the base frame so it never slices through crop leaves */}
+      {/* Highlighted plot plinth collar: brushed champagne-gold bevel frame & emerald glow corners */}
       {highlighted && (
-        <group position={[0, SOIL_BOTTOM + 0.008, 0]}>
+        <group position={[0, SOIL_BOTTOM + 0.01, 0]}>
           {[
-            { pos: [0, 0, -(PLOT + 0.48) / 2] as const, args: [PLOT + 0.5, 0.022, 0.045] as const },
-            { pos: [0, 0, (PLOT + 0.48) / 2] as const, args: [PLOT + 0.5, 0.022, 0.045] as const },
-            { pos: [-(PLOT + 0.48) / 2, 0, 0] as const, args: [0.045, 0.022, PLOT + 0.48] as const },
-            { pos: [(PLOT + 0.48) / 2, 0, 0] as const, args: [0.045, 0.022, PLOT + 0.48] as const },
+            { pos: [0, 0, -(PLOT + 0.5) / 2] as const, args: [PLOT + 0.52, 0.026, 0.05] as const },
+            { pos: [0, 0, (PLOT + 0.5) / 2] as const, args: [PLOT + 0.52, 0.026, 0.05] as const },
+            { pos: [-(PLOT + 0.5) / 2, 0, 0] as const, args: [0.05, 0.026, PLOT + 0.5] as const },
+            { pos: [(PLOT + 0.5) / 2, 0, 0] as const, args: [0.05, 0.026, PLOT + 0.5] as const },
           ].map((edge, idx) => (
             <mesh key={idx} position={edge.pos}>
               <boxGeometry args={edge.args} />
-              <meshStandardMaterial color="#3c8a5e" emissive="#1e5638" emissiveIntensity={0.48} roughness={0.42} />
+              <meshStandardMaterial color="#3ea86b" emissive="#1c6841" emissiveIntensity={0.62} metalness={0.22} roughness={0.34} />
             </mesh>
           ))}
           {([-1, 1] as const).flatMap((sx) =>
             ([-1, 1] as const).map((sz) => (
-              <group key={`${sx}-${sz}`} position={[sx * (PLOT / 2 + 0.24), 0.012, sz * (PLOT / 2 + 0.24)]}>
-                <mesh position={[-sx * 0.24, 0, 0]}>
-                  <boxGeometry args={[0.52, 0.028, 0.068]} />
-                  <meshStandardMaterial color="#76d49c" emissive="#2d7a51" emissiveIntensity={0.68} roughness={0.35} />
+              <group key={`${sx}-${sz}`} position={[sx * (PLOT / 2 + 0.25), 0.014, sz * (PLOT / 2 + 0.25)]}>
+                <mesh position={[-sx * 0.25, 0, 0]}>
+                  <boxGeometry args={[0.54, 0.032, 0.072]} />
+                  <meshStandardMaterial color="#e5c77c" emissive="#5d8c4c" emissiveIntensity={0.38} metalness={0.55} roughness={0.26} />
                 </mesh>
-                <mesh position={[0, 0, -sz * 0.24]}>
-                  <boxGeometry args={[0.068, 0.028, 0.52]} />
-                  <meshStandardMaterial color="#76d49c" emissive="#2d7a51" emissiveIntensity={0.68} roughness={0.35} />
+                <mesh position={[0, 0, -sz * 0.25]}>
+                  <boxGeometry args={[0.072, 0.032, 0.54]} />
+                  <meshStandardMaterial color="#e5c77c" emissive="#5d8c4c" emissiveIntensity={0.38} metalness={0.55} roughness={0.26} />
+                </mesh>
+                <mesh position={[0, 0.018, 0]}>
+                  <cylinderGeometry args={[0.042, 0.048, 0.038, 10]} />
+                  <meshStandardMaterial color="#96ebb3" emissive="#32a866" emissiveIntensity={0.78} metalness={0.35} roughness={0.24} />
                 </mesh>
               </group>
             )),
@@ -2717,7 +2883,7 @@ function Plot({
             )
           );
         })}
-      <Plants frame={frame} frost={weather.frost} storm={storm} dense={dense} />
+      <Plants frame={frame} frost={weather.frost} storm={storm} wetness={foliageWetness} dense={dense} />
     </group>
   );
 }
@@ -2833,67 +2999,475 @@ export class PrecipitationPhysics {
   }
 }
 
-function Precipitation({ weather }: { weather: WeatherFrame }) {
+/** Builds cross-quad falling rain streak geometry spanning foreground plots through valley midground with per-streak seeds. */
+export function buildRainStreaksGeometry(count = 2600, halfSpanX = 15): BufferGeometry {
+  const positions = new Float32Array(count * 8 * 3);
+  const uvs = new Float32Array(count * 8 * 2);
+  const seeds = new Float32Array(count * 8 * 4);
+  const indices: number[] = [];
+  const rot45 = Math.SQRT1_2;
+
+  for (let i = 0; i < count; i++) {
+    const h1 = ((Math.sin(i * 12.9898 + 1.7) * 43758.5453) % 1 + 1) % 1;
+    const h2 = ((Math.sin(i * 78.233 + 3.1) * 29432.1234) % 1 + 1) % 1;
+    const h3 = ((Math.sin(i * 45.164 + 5.9) * 18432.5123) % 1 + 1) % 1;
+    const h4 = ((Math.sin(i * 93.719 + 7.3) * 31942.9876) % 1 + 1) % 1;
+
+    const bucket = i % 10;
+    const closeLayer = bucket < 3;
+    const farLayer = bucket >= 7;
+    const xSpread = farLayer ? halfSpanX * 1.75 : closeLayer ? Math.min(13.5, halfSpanX * 1.15) : halfSpanX * 1.18;
+    const cx = (h1 - 0.5) * 2 * xSpread;
+    const cy = h2 * 11.5;
+    const cz = closeLayer ? -1.4 + h3 * 9.8 : farLayer ? -8.0 - h3 * 21.0 : -7.6 + h3 * 9.4;
+
+    const rank = (i + 0.5) / count;
+    const speed = closeLayer ? 1.0 + h4 * 0.52 : 0.85 + h4 * 0.5;
+    const phase = h2;
+    const distAlpha = closeLayer ? 0.78 + h1 * 0.22 : farLayer ? 0.36 + h4 * 0.22 : 0.65 + h1 * 0.28;
+
+    const halfW = (closeLayer ? 0.0052 : farLayer ? 0.011 : 0.0072) * (0.85 + h4 * 0.35);
+    const halfH = (closeLayer ? 0.44 : farLayer ? 0.62 : 0.48) * (0.85 + speed * 0.3);
+
+    const dx1 = halfW * rot45;
+    const dz1 = halfW * rot45;
+    const dx2 = -halfW * rot45;
+    const dz2 = halfW * rot45;
+
+    const baseV = i * 8;
+    const quads: [number, number, number, number][] = [
+      // Quad A (+45 deg)
+      [-dx1, -halfH, -dz1, 0],
+      [dx1, -halfH, dz1, 1],
+      [dx1, halfH, dz1, 1],
+      [-dx1, halfH, -dz1, 0],
+      // Quad B (-45 deg)
+      [-dx2, -halfH, -dz2, 0],
+      [dx2, -halfH, dz2, 1],
+      [dx2, halfH, dz2, 1],
+      [-dx2, halfH, -dz2, 0],
+    ];
+
+    quads.forEach(([ox, oy, oz, u], q) => {
+      const vi = baseV + q;
+      const vCoord = q % 4 >= 2 ? 1 : 0;
+      positions[vi * 3] = cx + ox;
+      positions[vi * 3 + 1] = cy + oy;
+      positions[vi * 3 + 2] = cz + oz;
+      uvs[vi * 2] = u;
+      uvs[vi * 2 + 1] = vCoord;
+      seeds[vi * 4] = rank;
+      seeds[vi * 4 + 1] = speed;
+      seeds[vi * 4 + 2] = phase;
+      seeds[vi * 4 + 3] = distAlpha;
+    });
+
+    indices.push(baseV, baseV + 1, baseV + 2, baseV, baseV + 2, baseV + 3);
+    indices.push(baseV + 4, baseV + 5, baseV + 6, baseV + 4, baseV + 6, baseV + 7);
+  }
+
+  const geom = new BufferGeometry();
+  geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geom.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+  geom.setAttribute("aSeed", new Float32BufferAttribute(seeds, 4));
+  geom.setIndex(indices);
+  geom.computeBoundingSphere();
+  return geom;
+}
+
+/** Builds a silky, motion-blurred GLSL ShaderMaterial for directional wind-slanted rain streaks. */
+export function buildRainStreaksMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uWindX: { value: -0.22 },
+      uIntensity: { value: 0.7 },
+      uTint: { value: new Color("#e2f0ff") },
+      uHorizonTint: { value: new Color("#ffffff") },
+    },
+    vertexShader: /* glsl */ `
+uniform float uTime;
+uniform float uWindX;
+uniform float uIntensity;
+attribute vec4 aSeed;
+varying vec2 vUv;
+varying float vAlpha;
+
+void main() {
+  vUv = uv;
+  float rank = aSeed.x;
+  float speed = aSeed.y;
+  float phase = aSeed.z;
+  float distAlpha = aSeed.w;
+
+  float spanH = 11.5;
+  float fallRate = ( 11.8 + speed * 5.6 ) * mix( 0.85, 1.28, uIntensity );
+  float baseY = mod( position.y - fallRate * uTime + phase * spanH, spanH ) + 0.14;
+  float localOffset = ( uv.y - 0.5 ) * 0.92 * mix( 0.85, 1.42, uIntensity );
+  float worldY = baseY + localOffset;
+
+  vec3 pos = vec3( position.x, worldY, position.z );
+  // Clean wind-slant along velocity vector + subtle atmospheric gust sway (no discontinuous modulo wrapping).
+  pos.x += ( uv.y - 0.5 ) * uWindX * ( 1.05 + speed * 0.52 ) + sin( uTime * 0.8 + phase * 6.283 ) * 0.09;
+
+  float groundFade = smoothstep( 0.10, 0.36, worldY );
+  float skyFade = 1.0 - smoothstep( 9.5, 11.5, worldY );
+  float activeMask = smoothstep( uIntensity + 0.05, max( uIntensity - 0.12, -0.05 ), rank - 0.02 );
+  vAlpha = distAlpha * groundFade * skyFade * activeMask;
+
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( pos, 1.0 );
+}
+`,
+    fragmentShader: /* glsl */ `
+uniform float uIntensity;
+uniform vec3 uTint;
+uniform vec3 uHorizonTint;
+varying vec2 vUv;
+varying float vAlpha;
+
+void main() {
+  float radial = pow( smoothstep( 0.5, 0.02, abs( vUv.x - 0.5 ) ), 1.75 );
+  // Brighter leading tip at bottom tapering smoothly upward into a razor-thin high-speed motion blur tail.
+  float leadTip = smoothstep( 0.0, 0.12, vUv.y );
+  float motionTail = smoothstep( 1.0, 0.06, vUv.y );
+  float streak = radial * leadTip * pow( motionTail, 1.38 );
+  if ( streak * vAlpha < 0.008 ) discard;
+
+  vec3 col = mix( uTint, uHorizonTint, smoothstep( 0.40, 0.0, vUv.y ) * 0.62 );
+  float alpha = streak * vAlpha * mix( 0.34, 0.58, uIntensity );
+  gl_FragColor = vec4( col, alpha );
+}
+`,
+  });
+}
+
+const SPLASH_RING_COUNT = 320;
+const SPLASH_CROWN_COUNT = 280;
+
+/** Multi-layer GPU rain: wind-sheared velocity streaks, expanding surface impact ripples, rebounding bounce droplets, distant valley shafts, and low damp mist. */
+function RainStorm({ weather, halfTrench }: { weather: WeatherFrame; halfTrench: number }) {
+  const storm = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
+  const rainIntensity = clamp01((weather.rainMm - 5) / 115 + (storm ? 0.28 : 0));
+  const windX = storm ? -0.34 : -0.18 - rainIntensity * 0.1;
+
+  // 1. Crossed velocity rain streaks
+  const streakGeom = useMemo(() => buildRainStreaksGeometry(2600, Math.max(12, halfTrench + 3)), [halfTrench]);
+  const streakMat = useMemo(() => buildRainStreaksMaterial(), []);
+  useEffect(() => () => {
+    streakGeom.dispose();
+    streakMat.dispose();
+  }, [streakGeom, streakMat]);
+
+  // 2. Animated surface splash rings & micro bounce beads
+  const { ringGeom, ringMat, crownGeom, crownMat } = useMemo(() => {
+    const rPos = new Float32Array(SPLASH_RING_COUNT * 4 * 3);
+    const rUv = new Float32Array(SPLASH_RING_COUNT * 4 * 2);
+    const rSeed = new Float32Array(SPLASH_RING_COUNT * 4 * 3);
+    const rIndices: number[] = [];
+    const spanX = Math.max(10, halfTrench - 0.3);
+
+    for (let i = 0; i < SPLASH_RING_COUNT; i++) {
+      const h1 = ((Math.sin(i * 19.31 + 0.5) * 43758.5453) % 1 + 1) % 1;
+      const h2 = ((Math.sin(i * 47.73 + 2.1) * 28461.1234) % 1 + 1) % 1;
+      const h3 = ((Math.sin(i * 83.19 + 4.3) * 19384.4211) % 1 + 1) % 1;
+      const onPlotBand = i % 10 < 7;
+      const sx = (h1 - 0.5) * 2 * (onPlotBand ? Math.max(6.2, halfTrench - 0.5) : spanX);
+      const sz = onPlotBand ? -2.45 + h2 * 4.85 : 2.65 + h2 * 3.15;
+      const sy = onPlotBand ? SOIL_TOP + 0.018 : GROUND_Y + 0.016;
+      const halfR = (onPlotBand ? 0.068 : 0.088) + h3 * 0.042;
+      const base = i * 4;
+      const corners: [number, number, number, number][] = [
+        [-halfR, -halfR, 0, 0],
+        [halfR, -halfR, 1, 0],
+        [halfR, halfR, 1, 1],
+        [-halfR, halfR, 0, 1],
+      ];
+      corners.forEach(([ox, oz, u, v], q) => {
+        const vi = base + q;
+        rPos[vi * 3] = sx + ox;
+        rPos[vi * 3 + 1] = sy;
+        rPos[vi * 3 + 2] = sz + oz;
+        rUv[vi * 2] = u;
+        rUv[vi * 2 + 1] = v;
+        rSeed[vi * 3] = h3;
+        rSeed[vi * 3 + 1] = 0.8 + h1 * 0.7;
+        rSeed[vi * 3 + 2] = (i + 0.5) / SPLASH_RING_COUNT;
+      });
+      rIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+
+    const rGeometry = new BufferGeometry();
+    rGeometry.setAttribute("position", new Float32BufferAttribute(rPos, 3));
+    rGeometry.setAttribute("uv", new Float32BufferAttribute(rUv, 2));
+    rGeometry.setAttribute("aSeed", new Float32BufferAttribute(rSeed, 3));
+    rGeometry.setIndex(rIndices);
+
+    const rMaterial = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 0.7 },
+      },
+      vertexShader: /* glsl */ `
+attribute vec3 aSeed;
+varying vec2 vUv;
+varying vec3 vSeed;
+void main() {
+  vUv = uv;
+  vSeed = aSeed;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+`,
+      fragmentShader: /* glsl */ `
+uniform float uTime;
+uniform float uIntensity;
+varying vec2 vUv;
+varying vec3 vSeed;
+
+void main() {
+  if ( vSeed.z > uIntensity ) discard;
+  float phase = fract( uTime * ( 2.05 + vSeed.y * 0.65 ) + vSeed.x * 7.13 );
+  float d = length( vUv - vec2( 0.5 ) ) * 2.0;
+  float ringRad = mix( 0.14, 0.90, phase );
+  float ring = exp( -pow( ( d - ringRad ) * 16.0, 2.0 ) ) * ( 1.0 - phase );
+  float burstDot = exp( -d * d * 26.0 ) * max( 0.0, 1.0 - phase * 4.2 );
+  float alpha = ( ring * 0.56 + burstDot * 0.68 ) * smoothstep( 0.05, 0.35, uIntensity );
+  if ( alpha < 0.01 ) discard;
+  gl_FragColor = vec4( 0.91, 0.96, 1.0, alpha );
+}
+`,
+    });
+
+    // 3. Rebounding impact splash micro-droplets leaping off mud & soil
+    const cPos = new Float32Array(SPLASH_CROWN_COUNT * 3);
+    const cSeed = new Float32Array(SPLASH_CROWN_COUNT * 3);
+    for (let i = 0; i < SPLASH_CROWN_COUNT; i++) {
+      const h1 = ((Math.sin(i * 23.17 + 1.1) * 38451.2312) % 1 + 1) % 1;
+      const h2 = ((Math.sin(i * 61.91 + 3.4) * 21453.6512) % 1 + 1) % 1;
+      const h3 = ((Math.sin(i * 97.43 + 5.7) * 14923.8123) % 1 + 1) % 1;
+      const onPlotCrown = i % 5 < 4;
+      const sx = (h1 - 0.5) * 2 * (onPlotCrown ? Math.max(6.2, halfTrench - 0.5) : spanX);
+      const sz = onPlotCrown ? -2.45 + h2 * 4.85 : 2.65 + h2 * 2.9;
+      cPos[i * 3] = sx;
+      cPos[i * 3 + 1] = onPlotCrown ? SOIL_TOP + 0.016 : GROUND_Y + 0.016;
+      cPos[i * 3 + 2] = sz;
+      cSeed[i * 3] = h3;
+      cSeed[i * 3 + 1] = (h1 - 0.5) * 2.0;
+      cSeed[i * 3 + 2] = (i + 0.5) / SPLASH_CROWN_COUNT;
+    }
+    const cGeometry = new BufferGeometry();
+    cGeometry.setAttribute("position", new Float32BufferAttribute(cPos, 3));
+    cGeometry.setAttribute("aSeed", new Float32BufferAttribute(cSeed, 3));
+
+    const cMaterial = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 0.7 },
+      },
+      vertexShader: /* glsl */ `
+uniform float uTime;
+uniform float uIntensity;
+attribute vec3 aSeed;
+varying float vAlpha;
+
+void main() {
+  float p = fract( uTime * ( 2.6 + aSeed.x * 0.9 ) + aSeed.x * 9.3 );
+  float hop = 4.0 * 0.16 * p * ( 1.0 - p );
+  vec3 pos = position + vec3( aSeed.y * p * 0.12, hop, ( aSeed.x - 0.5 ) * p * 0.11 );
+  vec4 mv = modelViewMatrix * vec4( pos, 1.0 );
+  float activeMask = step( aSeed.z, uIntensity );
+  vAlpha = ( 1.0 - p ) * 0.76 * activeMask;
+  gl_PointSize = 4.6 * ( 9.5 / max( -mv.z, 2.0 ) );
+  gl_Position = projectionMatrix * mv;
+}
+`,
+      fragmentShader: /* glsl */ `
+varying float vAlpha;
+void main() {
+  float d = length( gl_PointCoord - vec2( 0.5 ) );
+  if ( d > 0.5 || vAlpha < 0.01 ) discard;
+  gl_FragColor = vec4( 0.92, 0.97, 1.0, smoothstep( 0.5, 0.08, d ) * vAlpha );
+}
+`,
+    });
+
+    return { ringGeom: rGeometry, ringMat: rMaterial, crownGeom: cGeometry, crownMat: cMaterial };
+  }, [halfTrench]);
+
+  useEffect(() => () => {
+    ringGeom.dispose();
+    ringMat.dispose();
+    crownGeom.dispose();
+    crownMat.dispose();
+  }, [ringGeom, ringMat, crownGeom, crownMat]);
+
+  // 4. Distant valley rain shafts descending beneath storm clouds + subtle damp low vapor mist
+  const shaftMat = useMemo(
+    () =>
+      new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: DoubleSide,
+        uniforms: {
+          uTime: { value: 0 },
+          uIntensity: { value: 0.7 },
+          uWindX: { value: -0.25 },
+        },
+        vertexShader: /* glsl */ `
+uniform float uWindX;
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  vec3 p = position;
+  p.x += ( uv.y - 0.5 ) * uWindX * 3.8;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( p, 1.0 );
+}
+`,
+        fragmentShader: /* glsl */ `
+uniform float uTime;
+uniform float uIntensity;
+varying vec2 vUv;
+void main() {
+  float hFade = smoothstep( 0.0, 0.42, vUv.x ) * smoothstep( 1.0, 0.58, vUv.x );
+  float vFade = smoothstep( 0.0, 0.28, vUv.y ) * smoothstep( 1.0, 0.26, vUv.y );
+  float curtainBands = 0.65 + 0.35 * sin( vUv.x * 38.0 + uTime * 3.6 + vUv.y * 7.5 );
+  float fineVeil = 0.80 + 0.20 * sin( vUv.x * 95.0 - uTime * 5.2 + vUv.y * 14.0 );
+  float alpha = hFade * vFade * curtainBands * fineVeil * uIntensity * 0.23;
+  if ( alpha < 0.004 ) discard;
+  gl_FragColor = vec4( 0.72, 0.80, 0.88, alpha );
+}
+`,
+      }),
+    [],
+  );
+
+  const mistMat = useMemo(
+    () =>
+      new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: DoubleSide,
+        uniforms: {
+          uTime: { value: 0 },
+          uIntensity: { value: 0.7 },
+        },
+        vertexShader: /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+`,
+        fragmentShader: /* glsl */ `
+uniform float uTime;
+uniform float uIntensity;
+varying vec2 vUv;
+void main() {
+  float rx = ( vUv.x - 0.5 ) * 2.0;
+  float ry = ( vUv.y - 0.5 ) * 2.0;
+  float ellipse = smoothstep( 1.0, 0.12, length( vec2( rx * 0.95, ry * 1.15 ) ) );
+  float drift = 0.78 + 0.22 * sin( vUv.x * 7.0 - uTime * 0.6 );
+  float alpha = ellipse * drift * max( 0.0, uIntensity - 0.3 ) * 0.11;
+  if ( alpha < 0.003 ) discard;
+  gl_FragColor = vec4( 0.78, 0.85, 0.92, alpha );
+}
+`,
+      }),
+    [],
+  );
+
+  useEffect(() => () => {
+    shaftMat.dispose();
+    mistMat.dispose();
+  }, [shaftMat, mistMat]);
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    streakMat.uniforms.uTime.value = t;
+    streakMat.uniforms.uIntensity.value = rainIntensity;
+    streakMat.uniforms.uWindX.value = windX;
+    ringMat.uniforms.uTime.value = t;
+    ringMat.uniforms.uIntensity.value = rainIntensity;
+    crownMat.uniforms.uTime.value = t;
+    crownMat.uniforms.uIntensity.value = rainIntensity;
+    shaftMat.uniforms.uTime.value = t;
+    shaftMat.uniforms.uIntensity.value = rainIntensity;
+    shaftMat.uniforms.uWindX.value = windX;
+    mistMat.uniforms.uTime.value = t;
+    mistMat.uniforms.uIntensity.value = rainIntensity;
+  });
+
+  if (rainIntensity <= 0.04) return null;
+  const shaftSites: [number, number, number, number][] = [
+    [-34, 4.1, -44, 22],
+    [-16, 4.3, -54, 24],
+    [-2, 4.5, -62, 26],
+    [15, 4.3, -52, 24],
+    [33, 4.0, -45, 22],
+  ];
+
+  return (
+    <>
+      <mesh geometry={streakGeom} material={streakMat} frustumCulled={false} />
+      <mesh geometry={ringGeom} material={ringMat} frustumCulled={false} />
+      <points geometry={crownGeom} material={crownMat} frustumCulled={false} />
+      {rainIntensity > 0.35 &&
+        shaftSites.map(([sx, sy, sz, sw], idx) => (
+          <mesh key={`shaft-${idx}`} position={[sx, sy, sz]} material={shaftMat}>
+            <planeGeometry args={[sw, 7.6]} />
+          </mesh>
+        ))}
+      {rainIntensity > 0.45 &&
+        [-halfTrench * 0.45, halfTrench * 0.45].map((mx, idx) => (
+          <mesh key={`mist-${idx}`} position={[mx, 0.52, -0.4 + idx * 1.4]} material={mistMat}>
+            <planeGeometry args={[halfTrench * 1.1, 1.1]} />
+          </mesh>
+        ))}
+    </>
+  );
+}
+
+function Precipitation({ weather, halfTrench = 7.2 }: { weather: WeatherFrame; halfTrench?: number }) {
   const mesh = useRef<InstancedMesh>(null);
-  const splashMesh = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
-  const splashDummy = useMemo(() => new Object3D(), []);
   const physics = useMemo(() => new PrecipitationPhysics(DROPS), []);
   const snow = isSnowWeather(weather);
   const count = Math.round(Math.min(1, weather.rainMm / 150) * DROPS);
 
   useFrame((_, delta) => {
+    if (!snow) return;
     const m = mesh.current;
     if (!m) return;
-    physics.step(delta, snow, count);
+    physics.step(delta, true, count);
 
     for (let i = 0; i < count; i++) {
       const p = physics.bodies[i].position;
       dummy.position.set(p.x * 1.38, p.y, p.z);
-      dummy.rotation.set(0, 0, snow ? i * 0.4 : -0.11);
-      dummy.scale.set(1, snow ? 0.16 : 1, 1);
+      dummy.rotation.set(0, 0, i * 0.4);
+      dummy.scale.set(1, 0.16, 1);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
     m.count = count;
     m.instanceMatrix.needsUpdate = true;
-
-    const sm = splashMesh.current;
-    if (sm) {
-      if (snow || count === 0) {
-        sm.count = 0;
-        sm.instanceMatrix.needsUpdate = true;
-      } else {
-        const splashes = physics.getSplashPositions();
-        for (let i = 0; i < splashes.length; i++) {
-          const s = splashes[i];
-          splashDummy.position.set(s.x * 1.38, SOIL_TOP + 0.012, s.z);
-          splashDummy.rotation.set(-Math.PI / 2, 0, 0);
-          splashDummy.scale.set(1, 1, 1);
-          splashDummy.updateMatrix();
-          sm.setMatrixAt(i, splashDummy.matrix);
-        }
-        sm.count = splashes.length;
-        sm.instanceMatrix.needsUpdate = true;
-      }
-    }
   });
 
+  if (!snow) {
+    return <RainStorm weather={weather} halfTrench={halfTrench} />;
+  }
+
   return (
-    <>
-      <instancedMesh ref={mesh} args={[undefined, undefined, DROPS]}>
-        {snow ? (
-          <boxGeometry args={[0.075, 0.24, 0.075]} />
-        ) : (
-          <cylinderGeometry args={[0.004, 0.011, 0.44, 4]} />
-        )}
-        <meshBasicMaterial color={snow ? "#ffffff" : "#cbe5fc"} transparent opacity={snow ? 0.78 : 0.48} depthWrite={false} />
-      </instancedMesh>
-      <instancedMesh ref={splashMesh} args={[undefined, undefined, DROPS]}>
-        <ringGeometry args={[0.045, 0.082, 16]} />
-        <meshBasicMaterial color="#d4ebff" transparent opacity={0.44} side={DoubleSide} depthWrite={false} />
-      </instancedMesh>
-    </>
+    <instancedMesh ref={mesh} args={[undefined, undefined, DROPS]}>
+      <boxGeometry args={[0.075, 0.24, 0.075]} />
+      <meshBasicMaterial color="#ffffff" transparent opacity={0.78} depthWrite={false} />
+    </instancedMesh>
   );
 }
 
@@ -2930,38 +3504,47 @@ function SkyDome({
 function Clouds({ weather, spanFactor = 1 }: { weather: WeatherFrame; spanFactor?: number }) {
   const group = useRef<Group>(null);
   const dark = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
+  const wet = dark || weather.rainMm >= 25;
   const cloudUniforms = useMemo<CloudUniforms>(() => ({ uTime: { value: 0 }, uDark: { value: 0 } }), []);
   const cloudMat = useMemo(() => {
-    const mat = new MeshStandardMaterial({ color: "#f8fbff", roughness: 1.0, metalness: 0.0 });
+    const mat = new MeshStandardMaterial({ color: "#fafcff", roughness: 0.96, metalness: 0.0 });
     applyCloudShader(mat, cloudUniforms);
     return mat;
   }, [cloudUniforms]);
   const geometries = useMemo(() => [0, 1, 2].map((v) => buildCumulusCloudGeometry(v)), []);
 
   useEffect(() => {
-    cloudUniforms.uDark.value = dark ? 1 : 0;
-    cloudMat.color.set(dark ? "#d3dde8" : "#f8fbff");
-  }, [cloudUniforms, cloudMat, dark]);
+    const rainMood = dark ? 1 : weather.rainMm >= 40 ? 0.62 : 0;
+    cloudUniforms.uDark.value = rainMood;
+    cloudMat.color.set(dark ? "#6d7f92" : weather.rainMm >= 40 ? "#a4b5c7" : "#fcfdff");
+  }, [cloudUniforms, cloudMat, dark, weather.rainMm]);
 
   useEffect(() => () => cloudMat.dispose(), [cloudMat]);
 
   useFrame(({ clock }) => {
     cloudUniforms.uTime.value = clock.elapsedTime;
     if (group.current) {
-      group.current.position.x = Math.sin(clock.elapsedTime * 0.06) * 2.1;
+      group.current.position.x = Math.sin(clock.elapsedTime * 0.05) * 2.4;
     }
   });
 
-  if (weather.heavyRainDays < HEAVY_RAIN_MONTH && weather.rainMm < 25) return null;
   const scaleSpread = Math.max(0.95, spanFactor);
-  const placements: [x: number, y: number, z: number, v: number, sx: number, sy: number, sz: number][] = [
-    [-33 * scaleSpread, 4.4, -48, 0, 2.7, 1.05, 1.6],
-    [-16 * scaleSpread, 5.1, -64, 2, 3.1, 1.15, 1.8],
-    [-4.5 * scaleSpread, 5.55, -78, 1, 3.3, 1.18, 1.9],
-    [13.5 * scaleSpread, 5.25, -72, 0, 3.0, 1.12, 1.75],
-    [28 * scaleSpread, 4.6, -52, 1, 2.8, 1.08, 1.65],
-    [44 * scaleSpread, 5.0, -62, 2, 3.2, 1.15, 1.8],
+  const stormPlacements: [x: number, y: number, z: number, v: number, sx: number, sy: number, sz: number][] = [
+    [-42 * scaleSpread, 5.7, -54, 1, 4.2, 1.32, 2.0],
+    [-26 * scaleSpread, 6.2, -62, 0, 4.5, 1.38, 2.1],
+    [-11 * scaleSpread, 6.8, -68, 2, 4.8, 1.44, 2.2],
+    [4 * scaleSpread, 7.1, -72, 1, 4.9, 1.48, 2.2],
+    [19 * scaleSpread, 6.6, -66, 0, 4.5, 1.36, 2.1],
+    [34 * scaleSpread, 6.0, -58, 2, 4.3, 1.32, 2.0],
+    [48 * scaleSpread, 6.4, -64, 1, 4.4, 1.34, 2.05],
   ];
+  const fairPlacements: [x: number, y: number, z: number, v: number, sx: number, sy: number, sz: number][] = [
+    [-34 * scaleSpread, 7.1, -72, 2, 2.9, 1.02, 1.6],
+    [-9.5 * scaleSpread, 8.1, -84, 0, 3.3, 1.1, 1.75],
+    [18 * scaleSpread, 7.8, -80, 1, 3.0, 1.05, 1.7],
+    [41 * scaleSpread, 7.3, -74, 2, 3.1, 1.06, 1.65],
+  ];
+  const placements = wet ? stormPlacements : fairPlacements;
   return (
     <group ref={group}>
       {placements.map(([x, y, z, v, sx, sy, sz], i) => (
@@ -2969,6 +3552,104 @@ function Clouds({ weather, spanFactor = 1 }: { weather: WeatherFrame; spanFactor
       ))}
     </group>
   );
+}
+
+const MOTE_COUNT = 135;
+
+/** Ambient glittering snow spindrift in winter and warm sunlit pollen motes in gentle growing months. */
+function AtmosphericMotes({ weather, spanFactor = 1 }: { weather: WeatherFrame; spanFactor?: number }) {
+  const snow = isSnowWeather(weather);
+  const storm = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
+  const active = snow || !storm;
+
+  const { geom, mat } = useMemo(() => {
+    const pos = new Float32Array(MOTE_COUNT * 3);
+    const seed = new Float32Array(MOTE_COUNT * 3);
+    for (let i = 0; i < MOTE_COUNT; i++) {
+      const h1 = ((Math.sin(i * 19.7 + 1.1) * 43758.5453) % 1 + 1) % 1;
+      const h2 = ((Math.sin(i * 41.3 + 2.9) * 24634.6345) % 1 + 1) % 1;
+      const h3 = ((Math.sin(i * 73.1 + 4.7) * 18423.1123) % 1 + 1) % 1;
+      pos[i * 3] = (h1 - 0.5) * 28;
+      pos[i * 3 + 1] = 0.25 + h2 * 4.8;
+      pos[i * 3 + 2] = (h3 - 0.5) * 10.5;
+      seed[i * 3] = h1 * 6.283;
+      seed[i * 3 + 1] = 0.5 + h2 * 0.9;
+      seed[i * 3 + 2] = h3;
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new Float32BufferAttribute(pos, 3));
+    geometry.setAttribute("aSeed", new Float32BufferAttribute(seed, 3));
+
+    const material = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uSnow: { value: 0 },
+        uSpan: { value: 1 },
+      },
+      vertexShader: /* glsl */ `
+uniform float uTime;
+uniform float uSnow;
+uniform float uSpan;
+attribute vec3 aSeed;
+varying float vAlpha;
+varying float vSnowMix;
+
+void main() {
+  vec3 p = position;
+  p.x *= uSpan;
+  float t = uTime * ( 0.28 + 0.35 * aSeed.y );
+  float fallSpan = 4.9;
+  if ( uSnow > 0.5 ) {
+    p.y = 0.18 + mod( p.y - t * 0.72 + fallSpan * 4.0, fallSpan );
+    p.x += sin( uTime * 0.85 + aSeed.x ) * 0.52;
+    p.z += cos( uTime * 0.65 + aSeed.x ) * 0.36;
+  } else {
+    p.y += sin( uTime * 0.45 + aSeed.x ) * 0.26;
+    p.x += cos( uTime * 0.32 + aSeed.z * 6.28 ) * 0.44;
+  }
+  vec4 mvPos = modelViewMatrix * vec4( p, 1.0 );
+  float twinkle = 0.55 + 0.45 * sin( uTime * 3.1 + aSeed.x * 2.0 );
+  vAlpha = ( uSnow > 0.5 ? 0.68 : 0.38 ) * twinkle;
+  vSnowMix = uSnow;
+  gl_PointSize = ( uSnow > 0.5 ? 6.5 : 5.0 ) * ( 9.5 / max( -mvPos.z, 2.0 ) );
+  gl_Position = projectionMatrix * mvPos;
+}
+`,
+      fragmentShader: /* glsl */ `
+varying float vAlpha;
+varying float vSnowMix;
+
+void main() {
+  vec2 c = gl_PointCoord - vec2( 0.5 );
+  float d = length( c );
+  if ( d > 0.5 ) discard;
+  float soft = smoothstep( 0.5, 0.08, d );
+  vec3 col = mix( vec3( 1.0, 0.91, 0.68 ), vec3( 0.96, 0.99, 1.0 ), vSnowMix );
+  gl_FragColor = vec4( col, soft * vAlpha );
+}
+`,
+    });
+    return { geom: geometry, mat: material };
+  }, []);
+
+  useEffect(() => {
+    mat.uniforms.uSnow.value = snow ? 1 : 0;
+    mat.uniforms.uSpan.value = Math.max(0.85, spanFactor);
+  }, [mat, snow, spanFactor]);
+
+  useEffect(() => () => {
+    geom.dispose();
+    mat.dispose();
+  }, [geom, mat]);
+
+  useFrame((_, delta) => {
+    mat.uniforms.uTime.value = (mat.uniforms.uTime.value as number) + Math.min(delta, 0.1);
+  });
+
+  if (!active) return null;
+  return <points geometry={geom} material={mat} frustumCulled={false} />;
 }
 
 const plotSpacing = (n: number) => plotSpacingForCount(n);
@@ -3075,7 +3756,35 @@ function LabelAnchors({
   return null;
 }
 
-/** Updates camera position and OrbitControls target for the selected view preset & aspect ratio. */
+const CAMERA_GOAL_V = new Vector3();
+const CAMERA_FALLBACK_TARGET = new Vector3();
+
+/** Smoothly eases a camera's position and look target toward goal tuples; snaps and returns false once within threshold. */
+export function lerpCameraPose(
+  curPos: Vector3,
+  curTarget: Vector3,
+  goalPos: readonly [number, number, number],
+  goalTarget: readonly [number, number, number],
+  dt: number,
+  speed = 8,
+): boolean {
+  const alpha = 1 - Math.exp(-speed * Math.min(Math.max(dt, 0), 0.08));
+  CAMERA_GOAL_V.set(goalPos[0], goalPos[1], goalPos[2]);
+  curPos.lerp(CAMERA_GOAL_V, alpha);
+  CAMERA_GOAL_V.set(goalTarget[0], goalTarget[1], goalTarget[2]);
+  curTarget.lerp(CAMERA_GOAL_V, alpha);
+
+  const posDist = Math.hypot(curPos.x - goalPos[0], curPos.y - goalPos[1], curPos.z - goalPos[2]);
+  const tgtDist = Math.hypot(curTarget.x - goalTarget[0], curTarget.y - goalTarget[1], curTarget.z - goalTarget[2]);
+  if (posDist < 0.004 && tgtDist < 0.004) {
+    curPos.set(goalPos[0], goalPos[1], goalPos[2]);
+    curTarget.set(goalTarget[0], goalTarget[1], goalTarget[2]);
+    return false;
+  }
+  return true;
+}
+
+/** Updates camera position and OrbitControls target cleanly, gliding smoothly on preset/reset changes while yielding to user orbit drags. */
 function FitCamera({
   view,
   count,
@@ -3088,16 +3797,62 @@ function FitCamera({
   controlsRef: RefObject<ComponentRef<typeof OrbitControls> | null>;
 }) {
   const { camera, size } = useThree();
+  const goalRef = useRef<{ pos: [number, number, number]; target: [number, number, number] }>({
+    pos: [0, 6.8, 11.8],
+    target: [0, 0, 0],
+  });
+  const glidingRef = useRef(false);
+  const initializedRef = useRef(false);
+  const prevTriggerRef = useRef<{ view: CameraView; fitVersion: number }>({ view, fitVersion });
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const stopGlide = () => {
+      glidingRef.current = false;
+    };
+    controls.addEventListener("start", stopGlide);
+    return () => {
+      controls.removeEventListener("start", stopGlide);
+    };
+  }, [controlsRef]);
+
   useEffect(() => {
     const aspect = size.width / Math.max(size.height, 1);
     const { pos, target } = computeFittedCamera(view, count, aspect);
-    camera.position.set(...pos);
-    camera.lookAt(...target);
-    if (controlsRef.current) {
-      controlsRef.current.target.set(...target);
-      controlsRef.current.update();
+    goalRef.current = { pos, target };
+
+    const viewOrResetChanged = prevTriggerRef.current.view !== view || prevTriggerRef.current.fitVersion !== fitVersion;
+    prevTriggerRef.current = { view, fitVersion };
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (!initializedRef.current || !viewOrResetChanged || reduceMotion) {
+      initializedRef.current = true;
+      glidingRef.current = false;
+      camera.position.set(...pos);
+      camera.lookAt(...target);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(...target);
+        controlsRef.current.update();
+      }
+    } else {
+      glidingRef.current = true;
     }
   }, [camera, controlsRef, count, fitVersion, size.width, size.height, view]);
+
+  useFrame((_, delta) => {
+    if (!glidingRef.current) return;
+    const controls = controlsRef.current;
+    const targetVec = controls ? controls.target : CAMERA_FALLBACK_TARGET.set(...goalRef.current.target);
+    const moving = lerpCameraPose(camera.position, targetVec, goalRef.current.pos, goalRef.current.target, delta, 7.5);
+    camera.lookAt(targetVec);
+    controls?.update();
+    if (!moving) glidingRef.current = false;
+  });
+
   return null;
 }
 
@@ -3362,12 +4117,17 @@ function Terrain({
   const snow = isSnowWeather(weather);
   const storm = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
   const dryness = snow ? 0 : clamp01(1 - weather.rainMm / Math.max(weather.et0Mm, 1));
+  const wetness = snow ? 0 : clamp01((weather.rainMm - 15) / 145 + (storm ? 0.35 : 0));
+  const timberTexture = useMemo(() => createTimberTexture(), []);
+  useEffect(() => () => timberTexture?.dispose(), [timberTexture]);
 
   const groundUniforms = useMemo<GroundUniforms>(
     () => ({
       uSnow: { value: 0 },
       uFrost: { value: 0 },
       uDryness: { value: 0 },
+      uWetness: { value: 0 },
+      uTime: { value: 0 },
       uTrenchHalfWidth: { value: halfTrench },
       uTrenchFrontZ: { value: trenchFrontZ },
       uPlotHalfZ: { value: PLOT_HALF },
@@ -3385,10 +4145,15 @@ function Terrain({
     groundUniforms.uSnow.value = snow ? 1 : 0;
     groundUniforms.uFrost!.value = !snow && weather.frost && !storm ? 0.45 : 0;
     groundUniforms.uDryness.value = dryness;
+    groundUniforms.uWetness!.value = wetness;
     groundUniforms.uTrenchHalfWidth.value = halfTrench;
     groundUniforms.uTrenchFrontZ.value = trenchFrontZ;
     groundMat.color.copy(grass);
-  }, [groundUniforms, groundMat, grass, snow, storm, weather.frost, dryness, halfTrench, trenchFrontZ]);
+  }, [groundUniforms, groundMat, grass, snow, storm, weather.frost, dryness, wetness, halfTrench, trenchFrontZ]);
+
+  useFrame(({ clock }) => {
+    groundUniforms.uTime!.value = clock.elapsedTime;
+  });
 
   const ridgeGeom = useMemo(() => buildHorizonRidgeGeometry(), []);
 
@@ -3403,10 +4168,15 @@ function Terrain({
     </mesh>
   );
 
-  const curbHeight = 0.045;
-  const curbThick = 0.085;
+  const curbHeight = 0.068;
+  const curbThick = 0.115;
   const wallTint = snow ? "#7e6e5d" : "#685645";
-  const floorTint = snow ? "#6c5d4e" : storm ? "#43362a" : "#55473a";
+  const floorTint = snow ? "#6c5d4e" : storm ? "#3f3227" : "#55473a";
+  const beamColor = snow ? "#846d57" : "#70563f";
+  const gravelColor = snow ? "#d4dfe9" : storm ? "#6d7276" : "#969a9b";
+  const postXs = [-halfTrench, halfTrench];
+  const postZs = [trenchBackZ, trenchFrontZ];
+  const dividerXs = Array.from({ length: Math.max(0, count - 1) }, (_, j) => (plotX(j, count) + plotX(j + 1, count)) / 2);
 
   return (
     <group>
@@ -3423,7 +4193,11 @@ function Terrain({
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY, trenchCenterZ]} receiveShadow>
         <planeGeometry args={[trenchWidth, trenchDepth]} />
-        <meshStandardMaterial color={floorTint} map={soilTexture ?? undefined} roughness={storm && !snow ? 0.68 : 0.94} />
+        <meshStandardMaterial
+          color={floorTint}
+          map={soilTexture ?? undefined}
+          roughness={storm && !snow ? 0.24 : wetness > 0.35 && !snow ? 0.38 : 0.92}
+        />
       </mesh>
       <mesh position={[0, wallY, trenchBackZ]} receiveShadow>
         <planeGeometry args={[trenchWidth, wallHeight]} />
@@ -3441,19 +4215,58 @@ function Terrain({
         <planeGeometry args={[trenchWidth, wallHeight]} />
         <meshStandardMaterial color={wallTint} map={soilTexture ?? undefined} roughness={0.94} />
       </mesh>
-      {/* Weathered retaining curb around the soil inspection trench */}
+      {/* Crushed-gravel perimeter collar separating the study trench cleanly from turf/snow */}
+      <mesh position={[0, GROUND_Y + 0.004, trenchFrontZ + 0.24]} receiveShadow>
+        <boxGeometry args={[trenchWidth + 0.68, 0.012, 0.36]} />
+        <meshStandardMaterial color={gravelColor} map={soilTexture ?? undefined} roughness={0.92} />
+      </mesh>
+      <mesh position={[-halfTrench - 0.19, GROUND_Y + 0.004, trenchCenterZ]} receiveShadow>
+        <boxGeometry args={[0.28, 0.012, trenchDepth + 0.55]} />
+        <meshStandardMaterial color={gravelColor} map={soilTexture ?? undefined} roughness={0.92} />
+      </mesh>
+      <mesh position={[halfTrench + 0.19, GROUND_Y + 0.004, trenchCenterZ]} receiveShadow>
+        <boxGeometry args={[0.28, 0.012, trenchDepth + 0.55]} />
+        <meshStandardMaterial color={gravelColor} map={soilTexture ?? undefined} roughness={0.92} />
+      </mesh>
+      {/* Crafted weathered oak sleeper curb with corner bollards & dark-bronze caps */}
       <mesh position={[-halfTrench, GROUND_Y + curbHeight / 2 - 0.01, trenchCenterZ]} castShadow receiveShadow>
         <boxGeometry args={[curbThick, curbHeight, trenchDepth + curbThick]} />
-        <meshStandardMaterial color="#594a3d" roughness={0.82} />
+        <meshStandardMaterial color={beamColor} map={timberTexture ?? undefined} roughness={0.78} />
       </mesh>
       <mesh position={[halfTrench, GROUND_Y + curbHeight / 2 - 0.01, trenchCenterZ]} castShadow receiveShadow>
         <boxGeometry args={[curbThick, curbHeight, trenchDepth + curbThick]} />
-        <meshStandardMaterial color="#594a3d" roughness={0.82} />
+        <meshStandardMaterial color={beamColor} map={timberTexture ?? undefined} roughness={0.78} />
       </mesh>
       <mesh position={[0, GROUND_Y + curbHeight / 2 - 0.01, trenchFrontZ]} castShadow receiveShadow>
         <boxGeometry args={[trenchWidth + curbThick, curbHeight, curbThick]} />
-        <meshStandardMaterial color="#594a3d" roughness={0.82} />
+        <meshStandardMaterial color={beamColor} map={timberTexture ?? undefined} roughness={0.78} />
       </mesh>
+      {postXs.flatMap((px) =>
+        postZs.map((pz) => (
+          <group key={`bollard-${px}-${pz}`} position={[px, GROUND_Y, pz]}>
+            <mesh position={[0, 0.052, 0]} castShadow receiveShadow>
+              <boxGeometry args={[0.17, 0.11, 0.17]} />
+              <meshStandardMaterial color={beamColor} map={timberTexture ?? undefined} roughness={0.74} />
+            </mesh>
+            <mesh position={[0, 0.115, 0]} castShadow>
+              <boxGeometry args={[0.19, 0.022, 0.19]} />
+              <meshStandardMaterial color="#3c3a37" metalness={0.72} roughness={0.34} />
+            </mesh>
+          </group>
+        )),
+      )}
+      {dividerXs.map((dx, j) => (
+        <group key={`marker-${j}`} position={[dx, GROUND_Y, -PLOT_HALF - 0.18]}>
+          <mesh position={[0, 0.12, 0]} castShadow>
+            <boxGeometry args={[0.045, 0.24, 0.045]} />
+            <meshStandardMaterial color="#7d644a" map={timberTexture ?? undefined} roughness={0.8} />
+          </mesh>
+          <mesh position={[0, 0.255, 0]}>
+            <boxGeometry args={[0.056, 0.036, 0.056]} />
+            <meshStandardMaterial color="#d4b46c" metalness={0.45} roughness={0.38} />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }
@@ -3502,9 +4315,9 @@ const { SHELTERBELT_TREES, SHRUB_SPECS } = (() => {
       const x = cx + normK * spreadX + (hashA - 0.5) * 2.2;
       const z = cz + (hashB - 0.5) * 8.5;
       const kind: "conifer" | "deciduous" = (k + ci) % 3 === 0 ? "conifer" : "deciduous";
-      const baseScale = 0.38 + hashA * 0.34;
-      const scaleXZ = kind === "deciduous" ? baseScale * (1.05 + hashC * 0.2) : baseScale * 0.92;
-      const scaleY = kind === "conifer" ? baseScale * (1.08 + hashC * 0.16) : baseScale * (0.94 + hashC * 0.16);
+      const baseScale = 0.48 + hashA * 0.36;
+      const scaleXZ = kind === "deciduous" ? baseScale * (1.06 + hashC * 0.2) : baseScale * 0.96;
+      const scaleY = kind === "conifer" ? baseScale * (1.14 + hashC * 0.18) : baseScale * (0.96 + hashC * 0.16);
       trees.push({ x, z, scaleXZ, scaleY, rotY: hashB * Math.PI * 2, kind });
 
       shrubs.push({
@@ -3622,6 +4435,256 @@ function ScalePole({ x }: { x: number }) {
   );
 }
 
+let cachedWeatherStationBody: BufferGeometry | null = null;
+let cachedAnemometerRotor: BufferGeometry | null = null;
+
+/** Builds a field micrometeorological station mast with rain funnel, telemetry box, and tilted photovoltaic panel. Scenery/scale telemetry prop. */
+export function buildWeatherStationBodyGeometry(): BufferGeometry {
+  if (cachedWeatherStationBody) return cachedWeatherStationBody;
+  const parts: BufferGeometry[] = [];
+
+  // Concrete anchor footing pad & mounting flange
+  const footing = new CylinderGeometry(0.18, 0.21, 0.055, 12);
+  footing.translate(0, 0.0275, 0);
+  parts.push(paintVertexGradient(footing, "#74787c", "#959aa0", 0, 0.06));
+
+  // Main galvanized steel mast & base collar
+  const collar = new CylinderGeometry(0.068, 0.075, 0.06, 10);
+  collar.translate(0, 0.085, 0);
+  parts.push(paintVertexGradient(collar, "#383d42", "#51575e", 0.05, 0.12));
+
+  const mast = new CylinderGeometry(0.028, 0.034, 1.38, 10);
+  mast.translate(0, 0.72, 0);
+  parts.push(paintVertexGradient(mast, "#8a929b", "#cfd6de", 0.05, 1.42));
+
+  // Weatherproof telemetry enclosure box on mast
+  const loggerBox = new BoxGeometry(0.16, 0.22, 0.12);
+  loggerBox.translate(0, 0.62, 0.07);
+  parts.push(paintVertexGradient(loggerBox, "#ccd2d8", "#edf1f4", 0.5, 0.74));
+
+  // Tilted dark-silicon solar panel & aluminum frame facing South
+  const solarFrame = new BoxGeometry(0.36, 0.02, 0.26);
+  solarFrame.rotateX(0.56);
+  solarFrame.translate(0, 0.96, 0.14);
+  parts.push(paintVertexGradient(solarFrame, "#848b94", "#b4bcc6", 0.8, 1.1));
+
+  const solarCell = new BoxGeometry(0.32, 0.012, 0.22);
+  solarCell.rotateX(0.56);
+  solarCell.translate(0, 0.972, 0.146);
+  parts.push(paintVertexGradient(solarCell, "#142a4d", "#24477d", 0.85, 1.1));
+
+  // Horizontal sensor crossarm with cylindrical tipping-bucket rain gauge
+  const crossarm = new BoxGeometry(0.68, 0.028, 0.028);
+  crossarm.translate(0, 1.24, 0);
+  parts.push(paintVertexGradient(crossarm, "#7c848e", "#bac2cc", 1.2, 1.3));
+
+  const rainGauge = new CylinderGeometry(0.062, 0.058, 0.19, 12);
+  rainGauge.translate(-0.26, 1.32, 0);
+  parts.push(paintVertexGradient(rainGauge, "#b7c0c9", "#eef3f8", 1.22, 1.42));
+
+  const anemMount = new CylinderGeometry(0.018, 0.022, 0.14, 8);
+  anemMount.translate(0.28, 1.31, 0);
+  parts.push(paintVertexGradient(anemMount, "#666e78", "#9ea6b0", 1.24, 1.38));
+
+  cachedWeatherStationBody = mergeBufferGeometries(parts);
+  return cachedWeatherStationBody;
+}
+
+/** Builds a spinning 3-cup anemometer rotor centered cleanly on local (0, 0, 0) for mast mounting. */
+export function buildAnemometerRotorGeometry(): BufferGeometry {
+  if (cachedAnemometerRotor) return cachedAnemometerRotor;
+  const parts: BufferGeometry[] = [];
+  const hub = new CylinderGeometry(0.024, 0.026, 0.036, 10);
+  hub.translate(0, 0.018, 0);
+  parts.push(paintVertexGradient(hub, "#434952", "#7c848e", 0, 0.04));
+
+  for (let i = 0; i < 3; i++) {
+    const theta = (i * Math.PI * 2) / 3;
+    const arm = new BoxGeometry(0.11, 0.01, 0.01);
+    arm.translate(0.055, 0.022, 0);
+    arm.rotateY(theta);
+    parts.push(paintVertexGradient(arm, "#8d959f", "#d5dde5", 0, 0.04));
+
+    const cup = new ConeGeometry(0.024, 0.034, 8);
+    cup.rotateZ(Math.PI / 2);
+    cup.translate(0.11, 0.022, 0.014);
+    cup.rotateY(theta);
+    parts.push(paintVertexGradient(cup, "#252b32", "#47505a", 0, 0.05));
+  }
+
+  cachedAnemometerRotor = mergeBufferGeometries(parts);
+  return cachedAnemometerRotor;
+}
+
+/** Compact automated weather-station prop positioned along the headland beside the research trench. */
+function WeatherStationProp({ x, weather }: { x: number; weather: WeatherFrame }) {
+  const bodyGeom = useMemo(() => buildWeatherStationBodyGeometry(), []);
+  const rotorGeom = useMemo(() => buildAnemometerRotorGeometry(), []);
+  const rotorRef = useRef<Group>(null);
+  const storm = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
+  const windRate = storm ? 5.6 : weather.rainMm > 60 ? 3.2 : 1.7;
+
+  useFrame((_, delta) => {
+    if (rotorRef.current) {
+      rotorRef.current.rotation.y += Math.min(delta, 0.08) * windRate;
+    }
+  });
+
+  return (
+    <group position={[x, GROUND_Y, 0.85]} rotation={[0, 0.18, 0]}>
+      <mesh geometry={bodyGeom} castShadow receiveShadow>
+        <meshStandardMaterial vertexColors metalness={0.42} roughness={0.38} />
+      </mesh>
+      <group ref={rotorRef} position={[0.28, 1.38, 0]}>
+        <mesh geometry={rotorGeom} castShadow>
+          <meshStandardMaterial vertexColors metalness={0.55} roughness={0.28} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+export interface FarmsteadParts {
+  barnWalls: BufferGeometry;
+  barnRoof: BufferGeometry;
+  siloMetal: BufferGeometry;
+  fence: BufferGeometry;
+}
+
+let cachedFarmsteadParts: FarmsteadParts | null = null;
+
+/** Builds distant rural valley barn, galvanized grain silo, and split-rail pasture fence silhouettes. Scenery only: not this farm's buildings. */
+export function buildFarmsteadParts(): FarmsteadParts {
+  if (cachedFarmsteadParts) return cachedFarmsteadParts;
+
+  // Barn walls & painted architectural contrast trim
+  const wallParts: BufferGeometry[] = [];
+  const mainBody = new BoxGeometry(3.8, 2.2, 5.2);
+  mainBody.translate(0, 1.1, 0);
+  wallParts.push(paintVertexGradient(mainBody, "#782921", "#9b392e", 0, 2.3));
+
+  const frontTrim = new BoxGeometry(0.16, 2.22, 5.26);
+  frontTrim.translate(0, 1.11, 0);
+  wallParts.push(paintVertexGradient(frontTrim, "#d6cec0", "#ece6dc", 0, 2.3));
+
+  const doorFrame = new BoxGeometry(1.18, 1.38, 0.14);
+  doorFrame.translate(0, 0.69, 2.6);
+  wallParts.push(paintVertexGradient(doorFrame, "#d8d1c5", "#eee8df", 0, 1.5));
+
+  // Gabled barn roof slopes + crest cupola
+  const roofParts: BufferGeometry[] = [];
+  const leftSlope = new BoxGeometry(2.45, 0.16, 5.6);
+  leftSlope.rotateZ(0.46);
+  leftSlope.translate(-1.05, 2.68, 0);
+  roofParts.push(paintVertexGradient(leftSlope, "#36404a", "#4f5c69", 2.1, 3.3));
+
+  const rightSlope = new BoxGeometry(2.45, 0.16, 5.6);
+  rightSlope.rotateZ(-0.46);
+  rightSlope.translate(1.05, 2.68, 0);
+  roofParts.push(paintVertexGradient(rightSlope, "#36404a", "#4f5c69", 2.1, 3.3));
+
+  const gablePeak = new CylinderGeometry(0, 2.02, 1.05, 4);
+  gablePeak.rotateY(Math.PI / 4);
+  gablePeak.scale(1.36, 1.0, 2.48);
+  gablePeak.translate(0, 2.68, 0);
+  wallParts.push(paintVertexGradient(gablePeak, "#7c2c24", "#9e3c31", 2.1, 3.3));
+
+  const cupolaBase = new BoxGeometry(0.56, 0.52, 0.56);
+  cupolaBase.translate(0, 3.35, 0);
+  roofParts.push(paintVertexGradient(cupolaBase, "#d2cabd", "#ebe5da", 3.0, 3.65));
+
+  const cupolaCap = new ConeGeometry(0.48, 0.38, 4);
+  cupolaCap.rotateY(Math.PI / 4);
+  cupolaCap.translate(0, 3.78, 0);
+  roofParts.push(paintVertexGradient(cupolaCap, "#36404a", "#566473", 3.55, 4.0));
+
+  // Cylindrical grain silo + conical aluminum dome
+  const siloParts: BufferGeometry[] = [];
+  const siloBody = new CylinderGeometry(0.92, 0.95, 4.1, 14);
+  siloBody.translate(0, 2.05, 0);
+  siloParts.push(paintVertexGradient(siloBody, "#8d959d", "#c6cfd8", 0, 4.1));
+
+  const siloDome = new ConeGeometry(0.98, 0.85, 14);
+  siloDome.translate(0, 4.5, 0);
+  siloParts.push(paintVertexGradient(siloDome, "#abb4bd", "#dce3eb", 4.05, 4.95));
+
+  // Split-rail pasture fence unit (8 m span)
+  const fenceParts: BufferGeometry[] = [];
+  for (let p = -1; p <= 1; p++) {
+    const post = new BoxGeometry(0.11, 0.65, 0.11);
+    post.translate(p * 3.8, 0.32, 0);
+    fenceParts.push(paintVertexGradient(post, "#5d4835", "#7a6148", 0, 0.66));
+  }
+  for (const ry of [0.24, 0.48]) {
+    const rail = new BoxGeometry(7.8, 0.065, 0.055);
+    rail.translate(0, ry, 0);
+    fenceParts.push(paintVertexGradient(rail, "#6a533d", "#876d52", 0.2, 0.55));
+  }
+
+  cachedFarmsteadParts = {
+    barnWalls: mergeBufferGeometries(wallParts),
+    barnRoof: mergeBufferGeometries(roofParts),
+    siloMetal: mergeBufferGeometries(siloParts),
+    fence: mergeBufferGeometries(fenceParts),
+  };
+  return cachedFarmsteadParts;
+}
+
+/** Distant rural farmstead cluster nestled into midground valley rolling slopes. Scenery only. */
+function FarmsteadBackdrop({ snow }: { snow: boolean }) {
+  const parts = useMemo(() => buildFarmsteadParts(), []);
+  const snowRoofTint = snow ? "#cfdceb" : "#ffffff";
+  const fenceSites: [number, number, number][] = [
+    [-21, -46, 0.14],
+    [-13.5, -47, 0.08],
+    [16, -49, -0.1],
+    [23.5, -50, -0.05],
+  ];
+  const leftBarnY = terrainHillY(-27, -56) - 0.12;
+  const rightBarnY = terrainHillY(34, -64) - 0.12;
+
+  return (
+    <group>
+      {/* Left hill heritage barn + grain silo */}
+      <group position={[-27, leftBarnY, -56]} rotation={[0, 0.42, 0]} scale={[0.82, 0.82, 0.82]}>
+        <mesh geometry={parts.barnWalls} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors roughness={0.86} />
+        </mesh>
+        <mesh geometry={parts.barnRoof} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors color={snowRoofTint} roughness={snow ? 0.65 : 0.42} metalness={snow ? 0.08 : 0.32} />
+        </mesh>
+        <mesh geometry={parts.siloMetal} position={[3.05, 0, -0.75]} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors color={snow ? "#d7e2ec" : "#ffffff"} metalness={0.58} roughness={0.34} />
+        </mesh>
+      </group>
+      {/* Far right meadow gable shed & twin silo silhouette */}
+      <group position={[34, rightBarnY, -64]} rotation={[0, -0.52, 0]} scale={[0.7, 0.7, 0.7]}>
+        <mesh geometry={parts.barnWalls} castShadow>
+          <meshStandardMaterial vertexColors roughness={0.88} />
+        </mesh>
+        <mesh geometry={parts.barnRoof} castShadow>
+          <meshStandardMaterial vertexColors color={snowRoofTint} roughness={snow ? 0.68 : 0.46} metalness={snow ? 0.08 : 0.3} />
+        </mesh>
+        <mesh geometry={parts.siloMetal} position={[-2.9, 0, -0.5]} castShadow>
+          <meshStandardMaterial vertexColors color={snow ? "#d7e2ec" : "#ffffff"} metalness={0.55} roughness={0.36} />
+        </mesh>
+      </group>
+      {/* Foreground hillside split-rail pasture fences */}
+      {fenceSites.map(([fx, fz, rot], i) => (
+        <mesh
+          key={i}
+          geometry={parts.fence}
+          position={[fx, terrainHillY(fx, fz) - 0.05, fz]}
+          rotation={[0, rot, 0]}
+          castShadow
+        >
+          <meshStandardMaterial vertexColors roughness={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 export default function FieldScene({
   frames,
   weather,
@@ -3651,16 +4714,19 @@ export default function FieldScene({
   const hot = weather.heatDays >= 1;
   const darkStorm = weather.heavyRainDays >= HEAVY_RAIN_MONTH;
   const snow = isSnowWeather(weather);
+  const rainMistFactor = snow ? 0 : clamp01((weather.rainMm - 20) / 110 + (darkStorm ? 0.3 : 0));
   const sunFlat = Math.cos(sunElevation) * 22;
   const sun: [number, number, number] = [Math.max(8.5, sunFlat * 0.72 + 4.5), Math.max(6.0, sunUp * 22), sunFlat * 0.58 + 3.0];
-  const skySunPos: [number, number, number] = [sunFlat * 0.65, Math.max(4.5, sunUp * 20), -sunFlat * 0.75];
+  const skySunPos: [number, number, number] = [17, Math.max(3.6, Math.min(8.2, 2.8 + sunUp * 6.2)), -64];
   const dense = size.width >= 520;
   const grass = new Color("#73964b");
   if (snow) grass.set("#eef4fb");
   else if (weather.frost) grass.lerp(new Color("#657c45"), 0.35);
   else if (weather.rainMm < weather.et0Mm * 0.5) grass.lerp(new Color("#b5a25d"), 0.45);
-  const skyZenith = snow ? "#5a8bc0" : weather.frost ? "#4d82ba" : darkStorm ? "#586d83" : "#3a78c2";
-  const fogColor = snow ? "#d2e2f0" : weather.frost ? "#cbdeed" : darkStorm ? "#b5c5d4" : "#c4ddf2";
+  const skyZenith = snow ? "#457bbc" : weather.frost ? "#467bb5" : darkStorm ? "#324355" : "#2f6db8";
+  const fogColor = snow ? "#d4e3f2" : weather.frost ? "#cbdeed" : darkStorm ? "#8c9cad" : "#c4ddf2";
+  const fogNear = TERRAIN_FOG_NEAR - rainMistFactor * 24;
+  const fogFar = TERRAIN_FOG_FAR - rainMistFactor * 56;
   const halfTrench = trenchHalfWidth(frames.length);
   const soilScale = soilExaggeration(cameraView);
   const aspect = size.width / Math.max(size.height, 1);
@@ -3669,33 +4735,42 @@ export default function FieldScene({
   return (
     <>
       <color attach="background" args={[fogColor]} />
-      <fog attach="fog" args={[fogColor, TERRAIN_FOG_NEAR, TERRAIN_FOG_FAR]} />
+      <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
       <SkyDome zenith={skyZenith} horizon={fogColor} sunPos={skySunPos} storm={darkStorm} />
-      {/* Offline procedural IBL environment dome so soil, foliage, snow, and metal bands receive realistic sky/ground bounce */}
-      <Environment resolution={128} frames={1} environmentIntensity={snow ? 0.54 : darkStorm ? 0.42 : 0.62}>
-        <Lightformer form="rect" intensity={1.8} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[28, 28, 1]} color="#e8f3ff" />
-        <Lightformer form="circle" intensity={2.4} position={[12, 8, 8]} scale={9} color="#fff5e0" />
+      {/* Offline procedural IBL environment dome so soil, foliage, snow, solar panels, wet puddles, and silos receive crisp sky/ground bounce */}
+      <Environment resolution={128} frames={1} environmentIntensity={snow ? 0.62 : darkStorm ? 0.52 : 0.68}>
+        <Lightformer form="rect" intensity={2.0} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[28, 28, 1]} color="#dff0ff" />
+        <Lightformer form="circle" intensity={2.8} position={[12, 8, 8]} scale={9} color="#fff3da" />
+        <Lightformer form="circle" intensity={1.6} position={[-12, 6, -10]} scale={7} color="#d0e8ff" />
         <Lightformer form="rect" intensity={0.85} position={[0, -6, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[28, 28, 1]} color="#7f715d" />
       </Environment>
-      <hemisphereLight args={[snow ? "#cfe3f8" : "#dff0ff", snow ? "#8ba3bd" : "#5e4c38", snow ? 0.78 : 0.62]} />
-      <ambientLight intensity={0.22 + sunUp * 0.14 + (snow ? 0.14 : 0)} />
+      <hemisphereLight args={[snow ? "#cfe4fa" : darkStorm ? "#cbd9e6" : "#dff0ff", snow ? "#7f99b8" : "#5e4c38", snow ? 0.72 : darkStorm ? 0.72 : 0.58]} />
+      <ambientLight intensity={0.2 + sunUp * 0.14 + (snow ? 0.12 : darkStorm ? 0.08 : 0)} />
       <directionalLight
         position={sun}
-        intensity={snow ? 1.85 : 0.8 + sunUp * 1.5}
-        color={hot ? "#ffd2a0" : snow ? "#fff5e6" : "#fffaf0"}
+        intensity={snow ? 1.95 : darkStorm ? 0.55 + sunUp * 0.62 : 0.85 + sunUp * 1.55}
+        color={hot ? "#ffd2a0" : snow ? "#fff4e2" : darkStorm ? "#dfe8f2" : "#fffaf0"}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.00035}
         shadow-normalBias={0.02}
-        shadow-camera-left={-(halfTrench + 3)}
-        shadow-camera-right={halfTrench + 3}
+        shadow-camera-left={-(halfTrench + 3.5)}
+        shadow-camera-right={halfTrench + 3.5}
         shadow-camera-top={9}
         shadow-camera-bottom={-9}
+      />
+      {/* 3/4 back-left rim light carves crop silhouettes, wet leaves, timber corners, snow drifts, and station steel against the sky */}
+      <directionalLight
+        position={[-13, 6.2, -16]}
+        intensity={darkStorm ? 0.62 : snow ? 0.92 : 0.72}
+        color={snow || darkStorm ? "#d7ebff" : "#ffedc9"}
       />
       {/* The roots view faces the cut soil, which a low sun misses: fill it gently from the front. */}
       {soilScale > 1 && <directionalLight position={[0, 3, 14]} intensity={1.05} />}
       <Terrain grass={grass} count={frames.length} soilScale={soilScale} weather={weather} soilTexture={soilTexture} />
+      <FarmsteadBackdrop snow={snow} />
       <TreeLine leafless={snow} />
+      <WeatherStationProp x={-halfTrench - 1.05} weather={weather} />
       <ScalePole
         x={
           frames.length > 1
@@ -3717,7 +4792,8 @@ export default function FieldScene({
       ))}
       <LabelAnchors count={frames.length} anchors={anchors} view={cameraView} />
       <FitCamera view={cameraView} count={frames.length} fitVersion={fitVersion} controlsRef={controlsRef} />
-      <Precipitation weather={weather} />
+      <Precipitation weather={weather} halfTrench={halfTrench} />
+      <AtmosphericMotes weather={weather} spanFactor={halfTrench / 7.2} />
       <Clouds weather={weather} spanFactor={halfTrench / 7.2} />
       <OrbitControls
         ref={controlsRef}

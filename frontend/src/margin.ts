@@ -2,6 +2,7 @@
 // own numbers. Mirrors backend/app/economics.py (rotation_margin and add_margins);
 // margin.test.ts checks both give the same Iowa figures.
 
+import { t } from "./i18n";
 import type { CropLine, CropNumbers, Economics, RotationYear, Strategy } from "./types";
 
 export const COVER_NAME = "Winter rye cover";
@@ -25,7 +26,8 @@ export function rotationMargin(
     }
     if (y.cover) {
       if (coverCost === null) {
-        if (!missing.includes(COVER_NAME)) missing.push(COVER_NAME);
+        const coverName = t(COVER_NAME);
+        if (!missing.includes(coverName)) missing.push(coverName);
       } else {
         total -= coverCost;
       }

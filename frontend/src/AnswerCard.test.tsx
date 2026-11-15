@@ -59,3 +59,20 @@ test("says which numbers are missing instead of hiding the margin", () => {
   render(<AnswerCard baseline={base} top={noHay} currency="CAD" newCrops={[]} checks={[]} onSeeWhy={() => {}} />);
   expect(screen.getByText(/Gross margin: enter your numbers for alfalfa in "Your yields and prices"/)).toBeTruthy();
 });
+
+test("exposes a direct 3D seasons button when onSeeSeasons is passed", () => {
+  const onSeeSeasons = vi.fn();
+  render(
+    <AnswerCard
+      baseline={base}
+      top={top}
+      currency="USD"
+      newCrops={[]}
+      checks={[]}
+      onSeeWhy={() => {}}
+      onSeeSeasons={onSeeSeasons}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "See through the seasons (3D)" }));
+  expect(onSeeSeasons).toHaveBeenCalledTimes(1);
+});

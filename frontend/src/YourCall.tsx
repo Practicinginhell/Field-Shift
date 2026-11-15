@@ -9,6 +9,7 @@ interface Props {
   ruledOut: string[];
   /** Where the margin numbers come from, in words; omitted when there are no margins. */
   numbersSource?: string;
+  numbersOpen?: boolean;
   onOpen: (control: FarmerControl) => void;
 }
 
@@ -49,7 +50,7 @@ const CONTROL_ICONS: Record<FarmerControl, ReactNode> = {
  * Names the choices only the farmer can make, next to the options they shape, and
  * opens the control that changes each one.
  */
-export default function YourCall({ goals, irrigated, ruledOut, numbersSource, onOpen }: Props) {
+export default function YourCall({ goals, irrigated, ruledOut, numbersSource, numbersOpen = false, onOpen }: Props) {
   const items: { control: FarmerControl; label: string; value: string; action: string }[] = [
     {
       control: "priorities",
@@ -75,7 +76,7 @@ export default function YourCall({ goals, irrigated, ruledOut, numbersSource, on
       control: "numbers",
       label: t("Yields and prices:"),
       value: numbersSource,
-      action: t("Enter your yields and prices"),
+      action: numbersOpen ? t("Hide yields and prices") : t("Enter your yields and prices"),
     });
   }
 
@@ -84,7 +85,7 @@ export default function YourCall({ goals, irrigated, ruledOut, numbersSource, on
       <h3 id="your-call-title">{t("Your call")}</h3>
       <p className="hint">
         {t(
-          "These options come from NASA data and general crop facts. You know things the data doesn't. Change any of these and the comparison updates.",
+          "These options come from NASA data and general crop facts. You know things the data doesn't. Change any of these to update the comparison.",
         )}
       </p>
       <ul className="your-call-grid">
@@ -94,7 +95,12 @@ export default function YourCall({ goals, irrigated, ruledOut, numbersSource, on
               <strong className="your-call-label">{item.label}</strong>
               <span className="your-call-value">{item.value}</span>
             </span>
-            <button type="button" className="secondary your-call-btn" onClick={() => onOpen(item.control)}>
+            <button
+              type="button"
+              className="secondary your-call-btn"
+              aria-expanded={item.control === "numbers" ? numbersOpen : undefined}
+              onClick={() => onOpen(item.control)}
+            >
               {CONTROL_ICONS[item.control]}
               <span>{item.action}</span>
             </button>

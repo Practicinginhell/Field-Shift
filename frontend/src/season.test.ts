@@ -1,4 +1,4 @@
-import { Color, MeshStandardMaterial, ShaderLib } from "three";
+import { Color, MeshStandardMaterial, ShaderLib, Vector3 } from "three";
 import { expect, test } from "vitest";
 
 import {
@@ -7,21 +7,27 @@ import {
   applyGroundShader,
   applyRootShader,
   applySoilShader,
+  buildAnemometerRotorGeometry,
   buildBareBranchGeometry,
   buildBroadleafCrownGeometry,
   buildCumulusCloudGeometry,
   buildCutawayStreakGeometry,
+  buildFarmsteadParts,
   buildHorizonRidgeGeometry,
+  buildRainStreaksGeometry,
+  buildRainStreaksMaterial,
   buildSedimentFanGeometry,
   buildShrubGeometry,
   buildSkyDomeMaterial,
   buildTopsoilGeometry,
+  buildWeatherStationBodyGeometry,
   buildWindbreakConiferGeometry,
   clampLabelBottomY,
   getCropGeometry,
   getCrownGeometry,
   getRootGeometry,
   getRootVariantGeometry,
+  lerpCameraPose,
   PlantCanopyPhysics,
   plantsPerCell,
   PrecipitationPhysics,
@@ -649,4 +655,153 @@ test("rye_tuft fills normalized vertical canopy space, soil/ground separate uFro
   const fibCounts = [0, 1, 2].map((v) => getRootVariantGeometry("fibrous", v).getAttribute("position").count);
   expect(new Set(tapCounts).size).toBeGreaterThanOrEqual(2);
   expect(new Set(fibCounts).size).toBeGreaterThanOrEqual(2);
+});
+
+test("AAA scene upgrades expose solar disc scatter, snow crystal glints, camera glide easing, and field station/farmstead prop geometry", () => {
+  // 1. Sky dome renders a physical solar disc + Mie horizon scatter
+  const skyMat = buildSkyDomeMaterial();
+  expect(skyMat.fragmentShader).toContain("sunDisc");
+  expect(skyMat.fragmentShader).toContain("mieGlow");
+  expect(skyMat.uniforms.uSunColor.value).toBeInstanceOf(Color);
+
+  // 2. Ground & topsoil shaders inject snow crystal micro-glints and optional uWetness rainwater sheen
+  const snowGroundMat = new MeshStandardMaterial({ color: "#73964b" });
+  applyGroundShader(snowGroundMat, {
+    uSnow: { value: 1 },
+    uFrost: { value: 0 },
+    uDryness: { value: 0 },
+    uWetness: { value: 0.8 },
+    uTrenchHalfWidth: { value: 12 },
+    uTrenchFrontZ: { value: 5.3 },
+    uPlotHalfZ: { value: 2.85 },
+  });
+  const groundShader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: ShaderLib.standard.vertexShader,
+    fragmentShader: ShaderLib.standard.fragmentShader,
+  };
+  snowGroundMat.onBeforeCompile(groundShader as never, {} as never);
+  expect(groundShader.uniforms.uWetness.value).toBe(0.8);
+  expect(groundShader.fragmentShader).toContain("snowGlint");
+
+  const soilMat = new MeshStandardMaterial({ color: "#6e4d31" });
+  applySoilShader(soilMat, { uWetness: { value: 0.9 }, uHorizon: { value: 0 }, uSnow: { value: 1 } });
+  const soilShader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: ShaderLib.standard.vertexShader,
+    fragmentShader: ShaderLib.standard.fragmentShader,
+  };
+  soilMat.onBeforeCompile(soilShader as never, {} as never);
+  expect(soilShader.fragmentShader).toContain("snowGlint");
+
+  // 3. Camera pose glide converges monotonically without overshoot and snaps once within threshold
+  const curPos = new Vector3(0, 6.8, 12.0);
+  const curTarget = new Vector3(0, 0.2, 0);
+  const goalPos: [number, number, number] = [0, -0.35, 13.5];
+  const goalTarget: [number, number, number] = [0, -0.9, 0];
+  const d0 = curPos.distanceTo(new Vector3(...goalPos));
+  const stillMoving = lerpCameraPose(curPos, curTarget, goalPos, goalTarget, 1 / 60, 8);
+  expect(stillMoving).toBe(true);
+  const d1 = curPos.distanceTo(new Vector3(...goalPos));
+  expect(d1).toBeLessThan(d0);
+  expect(d1).toBeGreaterThan(0.5);
+  for (let i = 0; i < 120; i++) {
+    lerpCameraPose(curPos, curTarget, goalPos, goalTarget, 1 / 30, 8);
+  }
+  const done = lerpCameraPose(curPos, curTarget, goalPos, goalTarget, 1 / 30, 8);
+  expect(done).toBe(false);
+  expect(curPos.distanceTo(new Vector3(...goalPos))).toBeLessThan(1e-4);
+
+  // 4. Headland micro weather-station and distant farmstead prop builders return grounded vertex-colored geometry
+  const stationBody = buildWeatherStationBodyGeometry();
+  const rotor = buildAnemometerRotorGeometry();
+  stationBody.computeBoundingBox();
+  rotor.computeBoundingBox();
+  expect(stationBody.getAttribute("position").count).toBeGreaterThan(36);
+  expect(stationBody.getAttribute("color").count).toBe(stationBody.getAttribute("position").count);
+  expect(stationBody.boundingBox!.max.y).toBeGreaterThan(1.2);
+  expect(rotor.getAttribute("position").count).toBeGreaterThan(36);
+  expect(rotor.getAttribute("color").count).toBe(rotor.getAttribute("position").count);
+  expect(rotor.boundingBox!.max.x).toBeGreaterThan(0.08);
+  expect(rotor.boundingBox!.min.y).toBeGreaterThanOrEqual(-0.02);
+
+  const farm = buildFarmsteadParts();
+  for (const geom of [farm.barnWalls, farm.barnRoof, farm.siloMetal, farm.fence]) {
+    geom.computeBoundingBox();
+    expect(geom.getAttribute("position").count).toBeGreaterThan(24);
+    expect(geom.getAttribute("color").count).toBe(geom.getAttribute("position").count);
+    expect(geom.boundingBox!.min.y).toBeGreaterThanOrEqual(-0.05);
+  }
+});
+
+test("real-world rain system builds GPU motion-blurred streaks, wet glossy foliage, and live concentric puddle ripples", () => {
+  // 1. Cross-quad rain streak geometry & motion-blurred velocity material
+  const streakGeom = buildRainStreaksGeometry(120, 16);
+  const posAttr = streakGeom.getAttribute("position");
+  const uvAttr = streakGeom.getAttribute("uv");
+  const seedAttr = streakGeom.getAttribute("aSeed");
+  expect(posAttr.count).toBeGreaterThanOrEqual(120 * 8);
+  expect(uvAttr.count).toBe(posAttr.count);
+  expect(seedAttr.count).toBe(posAttr.count);
+  streakGeom.computeBoundingBox();
+  expect(streakGeom.boundingBox!.max.x - streakGeom.boundingBox!.min.x).toBeGreaterThan(20);
+
+  const rainMat = buildRainStreaksMaterial();
+  expect(rainMat.transparent).toBe(true);
+  expect(rainMat.depthWrite).toBe(false);
+  expect(rainMat.uniforms.uTime).toBeDefined();
+  expect(rainMat.uniforms.uWindX).toBeDefined();
+  expect(rainMat.uniforms.uIntensity).toBeDefined();
+  expect(rainMat.fragmentShader).toContain("smoothstep");
+  expect(rainMat.vertexShader).toContain("uWindX");
+
+  // 2. Foliage shader gains optional uWetness film for wet glistening leaves
+  const leafMat = new MeshStandardMaterial({ color: "#3b8734", roughness: 0.72 });
+  applyFoliageShader(leafMat, {
+    uTime: { value: 0 },
+    uWindStrength: { value: 0.08 },
+    uSubsurfaceColor: { value: new Color("#9be04a") },
+    uFrost: { value: 0 },
+    uWetness: { value: 0.85 },
+  });
+  const leafShader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: ShaderLib.standard.vertexShader,
+    fragmentShader: ShaderLib.standard.fragmentShader,
+  };
+  leafMat.onBeforeCompile(leafShader as never, {} as never);
+  expect(leafShader.uniforms.uWetness.value).toBe(0.85);
+  expect(leafShader.fragmentShader).toContain("wetSheen");
+
+  // 3. Soil & ground shaders drive animated concentric raindrop rippleRing effects inside wet puddles when uTime advances
+  const wetGroundMat = new MeshStandardMaterial({ color: "#73964b" });
+  applyGroundShader(wetGroundMat, {
+    uSnow: { value: 0 },
+    uFrost: { value: 0 },
+    uDryness: { value: 0 },
+    uWetness: { value: 0.9 },
+    uTime: { value: 1.5 },
+    uTrenchHalfWidth: { value: 12 },
+    uTrenchFrontZ: { value: 5.3 },
+    uPlotHalfZ: { value: 2.85 },
+  });
+  const groundShader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: ShaderLib.standard.vertexShader,
+    fragmentShader: ShaderLib.standard.fragmentShader,
+  };
+  wetGroundMat.onBeforeCompile(groundShader as never, {} as never);
+  expect(groundShader.uniforms.uTime.value).toBe(1.5);
+  expect(groundShader.fragmentShader).toContain("rippleRing");
+
+  const wetSoilMat = new MeshStandardMaterial({ color: "#6e4d31" });
+  applySoilShader(wetSoilMat, { uWetness: { value: 0.9 }, uHorizon: { value: 0 }, uTime: { value: 2.2 } });
+  const soilShader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: ShaderLib.standard.vertexShader,
+    fragmentShader: ShaderLib.standard.fragmentShader,
+  };
+  wetSoilMat.onBeforeCompile(soilShader as never, {} as never);
+  expect(soilShader.uniforms.uTime.value).toBe(2.2);
+  expect(soilShader.fragmentShader).toContain("rippleRing");
 });

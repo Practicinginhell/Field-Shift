@@ -100,7 +100,7 @@ function rowClass(val: number): string {
 export default function PrioritySliders({ priorities, onChange }: Props) {
   return (
     <div className="priorities">
-      <p className="hint">{t("0 = skip, 5 = top priority — sets how much each goal weighs.")}</p>
+      <p className="hint">{t("0 = skip, 5 = top priority. It sets how much each goal weighs.")}</p>
       <div className="priority-list">
         {(Object.keys(CRITERION_NAMES) as Criterion[]).map((c) => {
           const val = priorities[c];

@@ -10,6 +10,7 @@ import type { CropNumbers, Economics } from "./types";
 
 interface Props {
   economics: Economics;
+  typed?: TypedNumbers | null;
   /**
    * Called on every keystroke: the numbers to show margins with now, and which of them
    * are the farmer's own (sent with the next comparison).
@@ -24,17 +25,26 @@ const text = (v: number | null) => (v === null ? "" : String(v));
 const UNIT_WORDS: Record<string, string> = { bu: "bu", t: "tonne", ton: "ton" };
 const unitWord = (u: string) => t(UNIT_WORDS[u] ?? u);
 
-export default function YourNumbers({ economics, onChange }: Props) {
+export default function YourNumbers({ economics, typed, onChange }: Props) {
   const symbol = economics.currency === "CAD" ? t("C$") : "$";
   const [rows, setRows] = useState<Record<string, Row>>(() =>
     Object.fromEntries(
-      economics.crops.map((c) => [
-        c.crop,
-        { yield_per_acre: text(c.yield_per_acre), price: text(c.price), cost_per_acre: text(c.cost_per_acre) },
-      ]),
+      economics.crops.map((c) => {
+        const current = typed?.numbers[c.crop];
+        return [
+          c.crop,
+          {
+            yield_per_acre: text(current?.yield_per_acre ?? c.yield_per_acre),
+            price: text(current?.price ?? c.price),
+            cost_per_acre: text(current?.cost_per_acre ?? c.cost_per_acre),
+          },
+        ];
+      }),
     ),
   );
-  const [cover, setCover] = useState(text(economics.cover_crop_cost));
+  const [cover, setCover] = useState(() =>
+    text(typed && typed.coverCost !== undefined ? typed.coverCost : economics.cover_crop_cost),
+  );
 
   // A number the farmer can use: empty, negative or half-typed values count as missing.
   const valueOf = (v: string) => {
@@ -69,9 +79,11 @@ export default function YourNumbers({ economics, onChange }: Props) {
   };
 
   return (
-    <details id="control-numbers" tabIndex={-1} className="your-numbers">
-      <summary>{t("Your yields and prices")}</summary>
+    <section id="control-numbers" tabIndex={-1} className="your-numbers your-numbers-inline" aria-labelledby="control-numbers-heading">
       <div className="your-numbers-body">
+        <h3 id="control-numbers-heading" className="your-numbers-title">
+          {t("Your yields and prices")}
+        </h3>
         <p className="hint">
           {economics.region
             ? t("Filled in from the {region} budget. Type your own numbers over them.", { region: economics.region })
@@ -167,6 +179,6 @@ export default function YourNumbers({ economics, onChange }: Props) {
           </details>
         )}
       </div>
-    </details>
+    </section>
   );
 }
